@@ -17,7 +17,7 @@
   - 브라우저 접속 시 소켓 연결
   - 완료 기준: 서버 콘솔에 `Connected: [소켓ID]`, 브라우저 콘솔에 `Connected to server`
 
-- [ ] **1-3. shared 연결 확인**
+- [x] **1-3. shared 연결 확인**
   - `shared/constants.js`의 상수를 클라이언트와 서버 양쪽에서 불러와 출력
   - 완료 기준: 양쪽 콘솔에 같은 값이 찍힌다
 
