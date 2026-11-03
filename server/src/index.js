@@ -2,6 +2,7 @@
 import { createServer } from 'node:http';
 import express from 'express';
 import { Server } from 'socket.io';
+import { TICK_RATE } from '@lol1v1/shared';
 
 const PORT = process.env.PORT || 3000;
 
@@ -21,4 +22,5 @@ app.get('/health', (req, res) => res.json({ ok: true }));
 
 httpServer.listen(PORT, () => {
   console.log(`[server] listening on http://localhost:${PORT}`);
+  console.log('[shared] TICK_RATE =', TICK_RATE);
 });
