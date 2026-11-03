@@ -7,13 +7,13 @@
 
 ## Phase 1. 프로젝트 기초 공사
 
-- [ ] **1-1. 모노레포 구성**
+- [x] **1-1. 모노레포 구성**
   - npm workspaces로 `client/`, `server/`, `shared/` 구성
   - client: Vite, server: Express + Socket.io, shared: 다른 두 곳에서 import 가능하게 설정
   - 루트 `npm run dev` 하나로 클라이언트와 서버 동시 실행
   - 완료 기준: `npm run dev` 실행 시 에러 없이 둘 다 뜬다
 
-- [ ] **1-2. 서버 연결 확인**
+- [x] **1-2. 서버 연결 확인**
   - 브라우저 접속 시 소켓 연결
   - 완료 기준: 서버 콘솔에 `Connected: [소켓ID]`, 브라우저 콘솔에 `Connected to server`
 
