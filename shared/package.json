@@ -1,0 +1,9 @@
+{
+  "name": "@lol1v1/shared",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./index.js",
+    "./*": "./*"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "name": "@lol1v1/client",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build"
+  },
+  "dependencies": {
+    "@lol1v1/shared": "*"
+  },
+  "devDependencies": {
+    "vite": "8.3.5"
+  }
+}

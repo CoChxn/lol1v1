@@ -1,0 +1,14 @@
+{
+  "name": "@lol1v1/server",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch src/index.js",
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "@lol1v1/shared": "*",
+    "express": "5.3.0",
+    "socket.io": "4.8.4"
+  }
+}
