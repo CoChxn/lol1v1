@@ -9,6 +9,14 @@ const app = express();
 const httpServer = createServer(app);
 const io = new Server(httpServer);
 
+io.on('connection', (socket) => {
+  console.log(`Connected: ${socket.id}`);
+
+  socket.on('disconnect', (reason) => {
+    console.log(`Disconnected: ${socket.id} (${reason})`);
+  });
+});
+
 app.get('/health', (req, res) => res.json({ ok: true }));
 
 httpServer.listen(PORT, () => {
