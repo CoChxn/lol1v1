@@ -40,7 +40,7 @@ export function drawInfoPanel(ctx, state, myId, { fps, combatLog }) {
   y += panel(ctx, 10, y, [
     '[키] 1: 내 체력-100  2: 내 마나-50  3: 모두 회복  4: 둔화 40% 3초',
     '     5: 이속 +50% 3초  6: 공속 +100% 3초  7: 치명타 100% 3초  8: 허수아비 방어력',
-    '     A+좌클릭: 어택땅  S: 정지  F2: 개발자 모드 끄기',
+    '     A+좌클릭: 어택땅  S: 정지  P: 일시정지  N: 한 틱  M: 속도  F2: 개발자 모드 끄기',
   ], '#cde') + 8;
 
   const log = combatLog.entries();
@@ -70,4 +70,18 @@ export function drawModeBadge(ctx, width, devMode) {
   ctx.fillRect(width - w - 10, 10, w, 24);
   ctx.fillStyle = devMode ? '#fff' : 'rgba(255, 255, 255, 0.6)';
   ctx.fillText(text, width - w - 2, 27);
+}
+
+/** 일시정지·느리게 표시 (화면 위 가운데) */
+export function drawTimeBanner(ctx, width, state, { paused, scale }) {
+  if (!paused && scale === 1) return;
+  const text = paused ? `⏸ 일시정지  tick ${state.tick}  (N: 한 틱, P: 재생)` : `속도 ×${scale}  (M: 속도 변경)`;
+  ctx.font = 'bold 18px sans-serif';
+  const w = ctx.measureText(text).width + 30;
+  ctx.fillStyle = paused ? 'rgba(200, 60, 60, 0.85)' : 'rgba(60, 100, 200, 0.85)';
+  ctx.fillRect(width / 2 - w / 2, 10, w, 34);
+  ctx.fillStyle = '#fff';
+  ctx.textAlign = 'center';
+  ctx.fillText(text, width / 2, 33);
+  ctx.textAlign = 'start';
 }

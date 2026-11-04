@@ -6,6 +6,7 @@ import { createRenderer } from './render/renderer.js';
 import { setupInput } from './input.js';
 import { createDevMode } from './dev/devMode.js';
 import { createStatPanel } from './dev/statPanel.js';
+import { createTimeControl } from './dev/timeControl.js';
 
 // --- 서버 연결 ---
 const socket = io();
@@ -32,6 +33,7 @@ let pendingInputs = [];
 const canvas = document.getElementById('game');
 const renderer = createRenderer(canvas);
 const devMode = createDevMode();
+const timeControl = createTimeControl(devMode.isEnabled);
 
 // --- 입력 ---
 // 클릭한 지점의 적 찾기: 선택 반경(selectionRadius) 안에 있는 적 중 마우스에 가장 가까운 적.
@@ -56,7 +58,7 @@ function sendInput(input) {
   pendingInputs.push({ ...input, playerId: MY_ID });
 }
 
-const statPanel = createStatPanel({ getState: () => state, myId: MY_ID, onInput: sendInput });
+const statPanel = createStatPanel({ getState: () => state, myId: MY_ID, onInput: sendInput, timeControl });
 
 const inputControl = setupInput(canvas, {
   screenToWorld: (sx, sy) => renderer.camera.screenToWorld(sx, sy),
@@ -73,6 +75,9 @@ const inputControl = setupInput(canvas, {
 // --- 게임 루프 ---
 startLoop({
   stepDt: TICK_DT,
+  getScale: timeControl.getScale,
+  isPaused: timeControl.isPaused,
+  takeStepRequest: timeControl.takeStepRequest,
   step(dt) {
     prevState = state;
     state = update(state, pendingInputs, dt);
@@ -88,7 +93,7 @@ startLoop({
   },
   render(alpha) {
     statPanel.update(devMode.isEnabled());
-    renderer.render(prevState, state, alpha, MY_ID, { attackMoveMode: inputControl.isAttackMoveMode(), devMode: devMode.isEnabled() });
+    renderer.render(prevState, state, alpha, MY_ID, { attackMoveMode: inputControl.isAttackMoveMode(), devMode: devMode.isEnabled(), time: timeControl.status() });
   },
 });
 

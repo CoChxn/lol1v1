@@ -36,6 +36,8 @@ const CSS = `
 .dev-panel input:focus { border-color: #fd8; outline: none; }
 .dev-panel button { background: #223; color: #dde; border: 1px solid #556; border-radius: 3px; padding: 4px 6px; font: 12px sans-serif; cursor: pointer; }
 .dev-panel button:hover { background: #335; }
+.dev-panel button:disabled { opacity: 0.4; cursor: default; }
+.dev-panel .grid.time { margin-bottom: 4px; }
 .dev-panel .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
 .dev-panel .hint { color: #889; margin-top: 6px; line-height: 1.4; }
 `;
@@ -45,9 +47,10 @@ const CSS = `
  * @param {() => object} opts.getState
  * @param {string} opts.myId
  * @param {(input: object) => void} opts.onInput
+ * @param {object} opts.timeControl  시간 조절 (timeControl.js)
  * @returns {{ update: (devMode: boolean) => void }}
  */
-export function createStatPanel({ getState, myId, onInput }) {
+export function createStatPanel({ getState, myId, onInput, timeControl }) {
   const style = document.createElement('style');
   style.textContent = CSS;
   document.head.appendChild(style);
@@ -59,6 +62,33 @@ export function createStatPanel({ getState, myId, onInput }) {
 
   let targetId = myId;
   const send = (input) => onInput({ type: 'debug', targetId, ...input });
+
+  // 시간 조절
+  const timeTitle = document.createElement('h3');
+  timeTitle.textContent = '시간 (P: 일시정지  N: 한 틱  M: 속도)';
+  const timeRow = document.createElement('div');
+  timeRow.className = 'grid time';
+  const pauseBtn = document.createElement('button');
+  pauseBtn.onclick = () => timeControl.togglePause();
+  const stepBtn = document.createElement('button');
+  stepBtn.textContent = '한 틱 진행';
+  stepBtn.onclick = () => timeControl.stepOnce();
+  timeRow.append(pauseBtn, stepBtn);
+  const speedRow = document.createElement('div');
+  speedRow.className = 'tabs';
+  const speedButtons = [1, 0.5, 0.25].map((scale) => {
+    const b = document.createElement('button');
+    b.textContent = `×${scale}`;
+    b.onclick = () => timeControl.setSpeed(scale);
+    speedRow.appendChild(b);
+    return [scale, b];
+  });
+  function refreshTime() {
+    const { paused, scale } = timeControl.status();
+    pauseBtn.textContent = paused ? '▶ 재생' : '⏸ 일시정지';
+    stepBtn.disabled = !paused;
+    for (const [s, b] of speedButtons) b.classList.toggle('on', s === scale);
+  }
 
   // 대상 탭
   const tabs = document.createElement('div');
@@ -130,7 +160,7 @@ export function createStatPanel({ getState, myId, onInput }) {
   hint.className = 'hint';
   hint.textContent = '칸에 입력하는 동안에는 게임 키(A, S, 숫자)가 동작하지 않습니다.';
 
-  root.append(tabs, statsTitle, statsBox, effectTitle, grid, hint);
+  root.append(timeTitle, timeRow, speedRow, tabs, statsTitle, statsBox, effectTitle, grid, hint);
   refreshTabs();
 
   // 입력 중이 아닌 칸은 현재 값으로 계속 갱신
@@ -151,6 +181,7 @@ export function createStatPanel({ getState, myId, onInput }) {
     update(devMode) {
       root.style.display = devMode ? 'block' : 'none';
       if (!devMode) return;
+      refreshTime();
       const now = performance.now();
       if (now - lastRefresh > 100) {
         refreshValues();

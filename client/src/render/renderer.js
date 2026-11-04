@@ -7,7 +7,7 @@ import { drawProjectiles } from './projectiles.js';
 import { drawRangeRing } from './rangeRing.js';
 import { createDamageNumbers } from './damageNumbers.js';
 import { drawDebugOverlays, drawOverlayLegend } from './debug/overlays.js';
-import { drawInfoPanel, drawModeBadge } from './debug/infoPanel.js';
+import { drawInfoPanel, drawModeBadge, drawTimeBanner } from './debug/infoPanel.js';
 import { createCombatLog } from './debug/combatLog.js';
 
 export function createRenderer(canvas) {
@@ -35,7 +35,7 @@ export function createRenderer(canvas) {
    * @param {object} state  현재 틱 상태
    * @param {number} alpha  두 틱 사이 진행 비율(0~1)
    * @param {string} myId  내 플레이어 ID (카메라가 따라감)
-   * @param {object} [ui]  화면 상태 { attackMoveMode, devMode }
+   * @param {object} [ui]  화면 상태 { attackMoveMode, devMode, time: { paused, scale } }
    */
   function render(prevState, state, alpha, myId, ui = {}) {
     frames++;
@@ -72,6 +72,7 @@ export function createRenderer(canvas) {
     if (ui.devMode) {
       drawInfoPanel(ctx, state, myId, { fps, combatLog });
       drawOverlayLegend(ctx, canvas.width, canvas.height);
+      if (ui.time) drawTimeBanner(ctx, canvas.width, state, ui.time);
     }
     drawModeBadge(ctx, canvas.width, ui.devMode);
   }
