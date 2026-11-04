@@ -78,10 +78,13 @@ export function setupInput(canvas, { screenToWorld, pickEnemy, onInput, getDummy
   });
 
   // [개발자 모드] 숫자 테스트 키
-  const DEBUG_KEYS = { 1: 'damage', 2: 'spendMana', 3: 'restore', 4: 'slow', 5: 'haste', 6: 'attackSpeed', 7: 'crit' };
+  const DEBUG_KEYS = { 1: 'damage', 2: 'spendMana', 3: 'restoreAll', 4: 'slow', 5: 'haste', 6: 'attackSpeed', 7: 'crit' };
 
   window.addEventListener('keydown', (e) => {
     if (e.repeat) return;
+    // 개발자 패널 입력칸에 글자를 치는 중에는 게임 키를 무시한다
+    const tag = e.target?.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
     const key = e.key.toLowerCase();
     if (key === 'a') {
       attackMoveMode = true;

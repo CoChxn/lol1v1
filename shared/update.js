@@ -1,7 +1,7 @@
 // 게임 로직 한 틱. 순수 함수: 입력 상태를 바꾸지 않고 새 상태를 돌려준다.
 import { setMoveTarget, movePlayer, computeMoveSpeed } from './movement.js';
-import { addEffect, tickEffects } from './effects.js';
-import { applyDamage, spendMana, restoreFull } from './combat.js';
+import { tickEffects } from './effects.js';
+import { applyDebugInput } from './debug.js';
 import {
   orderAttack,
   orderAttackMove,
@@ -103,21 +103,4 @@ export function update(state, inputs, dt) {
     rngSeed: ctx.rng.seed,
     events: ctx.events,
   };
-}
-
-// 테스트용 입력 (Phase 4에서 서버는 개발 모드일 때만 허용한다)
-function applyDebugInput(players, player, { action, targetId, value }) {
-  if (action === 'damage') applyDamage(player, 100);
-  else if (action === 'spendMana') spendMana(player, 50);
-  else if (action === 'slow') addEffect(player, { kind: 'slow', value: 0.4, duration: 3 });
-  else if (action === 'haste') addEffect(player, { kind: 'percent', value: 0.5, duration: 3 });
-  else if (action === 'attackSpeed') addEffect(player, { kind: 'attackSpeed', value: 1, duration: 3 });
-  else if (action === 'crit') addEffect(player, { kind: 'critChance', value: 1, duration: 3 });
-  else if (action === 'setArmor') {
-    const target = players[targetId];
-    if (target && Number.isFinite(value)) target.armor = value;
-  }
-  else if (action === 'restore') {
-    for (const id in players) restoreFull(players[id]);
-  }
 }

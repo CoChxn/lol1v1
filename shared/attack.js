@@ -53,7 +53,7 @@ export function computeAttackSpeed(player) {
   const atk = getChampion(player.championId).attack;
   const base = atk.attackSpeed;
   const ratio = atk.attackSpeedRatio ?? base;
-  let bonus = 0;
+  let bonus = player.bonusAttackSpeed ?? 0;
   for (const e of player.effects) {
     if (e.kind === 'attackSpeed') bonus += e.value;
   }
@@ -241,7 +241,7 @@ export function updateAttack(player, players, map, dt, ctx) {
         player.attackWindupTargetId = null;
         player.commandLockTicks = 1;
         // 피해량(공격력 100%)과 치명타 여부는 발사 순간 정한다. 방어력은 맞는 순간의 값으로 계산한다.
-        const hit = { raw: atk.damage, crit: rollCrit(player, ctx.rng), critDamage: player.critDamage };
+        const hit = { raw: player.attackDamage, crit: rollCrit(player, ctx.rng), critDamage: player.critDamage };
         if (atk.type === 'melee') {
           dealAttackDamage(player, target, hit, ctx); // 근접: 즉시 적중
         } else {

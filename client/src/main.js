@@ -5,6 +5,7 @@ import { startLoop } from './game/loop.js';
 import { createRenderer } from './render/renderer.js';
 import { setupInput } from './input.js';
 import { createDevMode } from './dev/devMode.js';
+import { createStatPanel } from './dev/statPanel.js';
 
 // --- 서버 연결 ---
 const socket = io();
@@ -51,13 +52,19 @@ function pickEnemy(wx, wy) {
   return best;
 }
 
+function sendInput(input) {
+  pendingInputs.push({ ...input, playerId: MY_ID });
+}
+
+const statPanel = createStatPanel({ getState: () => state, myId: MY_ID, onInput: sendInput });
+
 const inputControl = setupInput(canvas, {
   screenToWorld: (sx, sy) => renderer.camera.screenToWorld(sx, sy),
   pickEnemy,
   getDummyArmor: () => state.players.dummy?.armor,
   isDevMode: devMode.isEnabled,
   onInput(input) {
-    pendingInputs.push({ ...input, playerId: MY_ID });
+    sendInput(input);
     if (input.type === 'move') renderer.clickMarker.show(input.x, input.y);
     if (input.type === 'attackMove') renderer.clickMarker.show(input.x, input.y, '255, 90, 90');
   },
@@ -80,6 +87,7 @@ startLoop({
     }
   },
   render(alpha) {
+    statPanel.update(devMode.isEnabled());
     renderer.render(prevState, state, alpha, MY_ID, { attackMoveMode: inputControl.isAttackMoveMode(), devMode: devMode.isEnabled() });
   },
 });

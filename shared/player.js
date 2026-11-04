@@ -41,6 +41,8 @@ export function createPlayer({ id, name, team, x, y, championId = DEFAULT_CHAMPI
     attackTargetId: null, // 평타 명령 대상 ID (추적·반복 공격)
     attackMoveTarget: null, // 어택땅 목적지 {x, y}. 이동하면서 사거리 안의 적을 찾는다
     attackWindupTargetId: null, // 지금 선딜레이 중인 평타의 대상 ID
+    attackDamage: champ.attack.damage, // 공격력(AD). 챔피언 값으로 시작 (아이템 등으로 바뀔 수 있음)
+    bonusAttackSpeed: 0, // 추가 공격속도 (효과와 별개의 고정 보너스, 예: +0.5 = +50%)
     attackSpeed: champ.attack.attackSpeed, // 총 공격속도. 매 틱 효과를 반영해 다시 계산한다
     attackTimer: 0, // 공격 타이머 남은 시간(초). 0이면 새 평타 가능
     attackTimerTotal: 0, // 이번 공격 타이머 전체 길이 T (표시용)
