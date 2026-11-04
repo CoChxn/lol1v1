@@ -16,7 +16,7 @@ const HP_COLORS = {
  */
 export function drawOverhead(ctx, p, x, y, isMe) {
   const left = Math.round(x - BAR_WIDTH / 2);
-  const hpTop = Math.round(y - p.radius - 26);
+  const hpTop = Math.round(y - p.gameplayRadius - 26);
   const manaTop = hpTop + HP_HEIGHT + 1;
 
   // 바 배경(테두리)

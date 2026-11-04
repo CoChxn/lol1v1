@@ -43,7 +43,7 @@ export function drawArena(ctx, map) {
   ctx.stroke();
   ctx.setLineDash([]);
   ctx.beginPath();
-  ctx.arc(width / 2, height / 2, 120, 0, Math.PI * 2);
+  ctx.arc(width / 2, height / 2, 240, 0, Math.PI * 2);
   ctx.stroke();
 
   // 벽 안쪽 테두리
@@ -59,7 +59,7 @@ export function drawArena(ctx, map) {
     ctx.strokeStyle = color.stroke;
     ctx.lineWidth = 4;
     ctx.beginPath();
-    ctx.arc(x, y, 110, 0, Math.PI * 2);
+    ctx.arc(x, y, 220, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
   }

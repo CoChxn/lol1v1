@@ -4,9 +4,9 @@ import { getChampion } from './champions.js';
 import { setMoveTarget } from './movement.js';
 import { applyDamage } from './combat.js';
 
-/** 두 캐릭터 가장자리 사이 거리 */
+/** 두 캐릭터 가장자리 사이 거리 (게임플레이 반경 기준). 평타 조건: edgeDistance ≤ 사거리 */
 export function edgeDistance(a, b) {
-  return Math.hypot(b.x - a.x, b.y - a.y) - a.radius - b.radius;
+  return Math.hypot(b.x - a.x, b.y - a.y) - a.gameplayRadius - b.gameplayRadius;
 }
 
 /** 공격할 수 있는 대상인지 (다른 팀이고 살아 있음) */
@@ -102,7 +102,7 @@ export function updateProjectile(proj, players, dt) {
   }
 
   // 원-원 충돌
-  if (Math.hypot(target.x - proj.x, target.y - proj.y) < proj.radius + target.radius) {
+  if (Math.hypot(target.x - proj.x, target.y - proj.y) < proj.radius + target.gameplayRadius) {
     applyDamage(target, proj.damage);
     return false;
   }

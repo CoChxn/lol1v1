@@ -43,7 +43,7 @@ export function update(state, inputs, dt) {
 
   // 3. 이동
   for (const id in players) {
-    movePlayer(players[id], dt, state.map);
+    movePlayer(players[id], players, dt, state.map);
   }
 
   // 4. 투사체 이동·적중

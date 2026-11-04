@@ -23,7 +23,7 @@ let state = createGameState();
 const spawn = state.map.spawns.blue;
 state = addPlayer(state, createPlayer({ id: MY_ID, name: 'Player', team: 'blue', x: spawn.x, y: spawn.y }));
 // 연습용 허수아비: 입력을 받지 않으므로 움직이지 않는다 (Phase 3 전투 테스트용)
-state = addPlayer(state, createPlayer({ id: 'dummy', name: 'Dummy', team: 'red', x: 1500, y: 700, isDummy: true }));
+state = addPlayer(state, createPlayer({ id: 'dummy', name: 'Dummy', team: 'red', x: spawn.x + 1100, y: spawn.y, isDummy: true }));
 let prevState = state;
 let pendingInputs = [];
 
@@ -38,7 +38,7 @@ function pickEnemy(wx, wy) {
   for (const id in state.players) {
     const p = state.players[id];
     if (p.team === me.team || p.hp <= 0) continue;
-    if (Math.hypot(p.x - wx, p.y - wy) <= p.radius + PICK_TOLERANCE) return id;
+    if (Math.hypot(p.x - wx, p.y - wy) <= p.gameplayRadius + PICK_TOLERANCE) return id;
   }
   return null;
 }

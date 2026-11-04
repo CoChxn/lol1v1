@@ -4,7 +4,8 @@
 export const CHAMPIONS = {
   ranger: {
     name: 'Ranger',
-    radius: 30,
+    gameplayRadius: 65, // 판정용 (평타 사거리, 투사체 적중)
+    pathingRadius: 35, // 이동 충돌용 (벽, 다른 캐릭터와 부딪힘)
     maxHp: 600,
     maxMana: 300,
     moveSpeed: 330,

@@ -20,7 +20,8 @@ export function createPlayer({ id, name, team, x, y, championId = DEFAULT_CHAMPI
     championId,
     x,
     y,
-    radius: champ.radius,
+    gameplayRadius: champ.gameplayRadius,
+    pathingRadius: champ.pathingRadius,
     moveSpeed: champ.moveSpeed,
     hp: champ.maxHp,
     maxHp: champ.maxHp,
@@ -32,6 +33,8 @@ export function createPlayer({ id, name, team, x, y, championId = DEFAULT_CHAMPI
     attackTargetId: null, // 공격 대상 ID
     attackCooldown: 0, // 다음 공격까지 남은 시간(초)
     attackWindup: null, // 발사까지 남은 준비 시간(초). null이면 준비 중 아님
+    // 유체화: true면 다른 캐릭터와의 이동 충돌을 무시한다
+    ghosted: false,
     isDummy,
   };
 }

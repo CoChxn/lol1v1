@@ -32,18 +32,29 @@ function drawBody(ctx, prevState, state, alpha, myId, id) {
   const { x, y } = lerpPlayerPos(prevState.players[id], p, alpha);
   const color = TEAM_COLORS[p.team];
 
+  const body = p.pathingRadius;
+
+  // 판정 범위(게임플레이 반경): 평타 사거리·투사체 적중 기준
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.04)';
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.arc(x, y, p.gameplayRadius, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+
   // 그림자
   ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
   ctx.beginPath();
-  ctx.ellipse(x, y + p.radius * 0.6, p.radius * 0.9, p.radius * 0.4, 0, 0, Math.PI * 2);
+  ctx.ellipse(x, y + body * 0.6, body * 0.9, body * 0.4, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  // 몸체
+  // 몸체(이동 충돌 반경): 다른 캐릭터와 이 크기로 부딪힌다
   ctx.fillStyle = color.body;
   ctx.strokeStyle = id === myId ? '#ffe066' : color.outline;
   ctx.lineWidth = 3;
   ctx.beginPath();
-  ctx.arc(x, y, p.radius, 0, Math.PI * 2);
+  ctx.arc(x, y, body, 0, Math.PI * 2);
   ctx.fill();
   ctx.stroke();
 }
