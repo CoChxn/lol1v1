@@ -1,5 +1,4 @@
 // Canvas 2D 렌더러. 게임 상태를 읽어서 그리기만 하고, 상태를 바꾸지 않는다.
-import { getChampion, computeWindup, computeCritChance } from '@lol1v1/shared';
 import { createCamera } from './camera.js';
 import { drawArena, WALL_THICKNESS } from './arena.js';
 import { drawPlayers, lerpPlayerPos } from './players.js';
@@ -7,12 +6,16 @@ import { createClickMarker } from './clickMarker.js';
 import { drawProjectiles } from './projectiles.js';
 import { drawRangeRing } from './rangeRing.js';
 import { createDamageNumbers } from './damageNumbers.js';
+import { drawDebugOverlays, drawOverlayLegend } from './debug/overlays.js';
+import { drawInfoPanel, drawModeBadge } from './debug/infoPanel.js';
+import { createCombatLog } from './debug/combatLog.js';
 
 export function createRenderer(canvas) {
   const ctx = canvas.getContext('2d');
   const camera = createCamera(WALL_THICKNESS + 40);
   const clickMarker = createClickMarker();
   const damageNumbers = createDamageNumbers();
+  const combatLog = createCombatLog();
 
   // FPS 측정용
   let frames = 0;
@@ -32,7 +35,7 @@ export function createRenderer(canvas) {
    * @param {object} state  현재 틱 상태
    * @param {number} alpha  두 틱 사이 진행 비율(0~1)
    * @param {string} myId  내 플레이어 ID (카메라가 따라감)
-   * @param {object} [ui]  화면 상태 { attackMoveMode }
+   * @param {object} [ui]  화면 상태 { attackMoveMode, devMode }
    */
   function render(prevState, state, alpha, myId, ui = {}) {
     frames++;
@@ -56,34 +59,22 @@ export function createRenderer(canvas) {
     // 월드
     camera.apply(ctx);
     drawArena(ctx, state.map);
-    if (me) drawRangeRing(ctx, me, focus.x, focus.y, ui.attackMoveMode);
+    // 사거리 원: 어택땅 모드일 때 (LoL처럼)
+    if (me && ui.attackMoveMode) drawRangeRing(ctx, me, focus.x, focus.y, true);
     clickMarker.draw(ctx);
     drawPlayers(ctx, prevState, state, alpha, myId);
+    if (ui.devMode) drawDebugOverlays(ctx, prevState, state, alpha);
     drawProjectiles(ctx, prevState, state, alpha);
     damageNumbers.draw(ctx);
 
     // 화면 고정 UI
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.fillStyle = '#8f8';
-    ctx.font = '14px monospace';
-    ctx.fillText(`tick ${state.tick}  time ${state.time.toFixed(1)}s  fps ${fps}`, 10, 20);
-    if (me) {
-      ctx.fillText(`pos ${me.x.toFixed(0)}, ${me.y.toFixed(0)}  ${me.target ? 'moving' : 'idle'}`, 10, 40);
-      ctx.fillText(`hp ${Math.ceil(me.hp)}/${me.maxHp}  mana ${me.mana}/${me.maxMana}  armor ${me.armor}  crit ${(computeCritChance(me) * 100).toFixed(0)}%`, 10, 60);
-      const dummy = state.players.dummy;
-      if (dummy) ctx.fillText(`dummy hp ${Math.ceil(dummy.hp)}/${dummy.maxHp}  armor ${dummy.armor}`, 10, 100);
-      const effects = me.effects.map((e) => `${e.kind} ${e.value} (${e.remaining.toFixed(1)}s)`).join(', ');
-      ctx.fillText(`move speed ${me.moveSpeed.toFixed(1)} (base ${me.baseMoveSpeed})  ${effects}`, 10, 120);
-      const atk = getChampion(me.championId).attack;
-      const T = 1 / me.attackSpeed;
-      ctx.fillText(
-        `attack speed ${me.attackSpeed.toFixed(3)}  T ${T.toFixed(3)}s  W ${computeWindup(atk, me.attackSpeed).toFixed(3)}s  [${me.attackState}]${me.attackMoveTarget ? ' attack-move' : ''}`,
-        10,
-        140,
-      );
-      ctx.fillText('[테스트] 1: 내 체력-100  2: 내 마나-50  3: 모두 회복  4: 둔화 40% 3초  5: 이속 +50% 3초  6: 공속 +100% 3초  7: 치명타 100% 3초  8: 허수아비 방어력  |  A+좌클릭: 어택땅  S: 정지', 10, 80);
+    if (ui.devMode) {
+      drawInfoPanel(ctx, state, myId, { fps, combatLog });
+      drawOverlayLegend(ctx, canvas.width, canvas.height);
     }
+    drawModeBadge(ctx, canvas.width, ui.devMode);
   }
 
-  return { render, camera, clickMarker, damageNumbers };
+  return { render, camera, clickMarker, damageNumbers, combatLog };
 }

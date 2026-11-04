@@ -4,6 +4,7 @@ import { TICK_DT, createGameState, createPlayer, addPlayer, update } from '@lol1
 import { startLoop } from './game/loop.js';
 import { createRenderer } from './render/renderer.js';
 import { setupInput } from './input.js';
+import { createDevMode } from './dev/devMode.js';
 
 // --- 서버 연결 ---
 const socket = io();
@@ -29,6 +30,7 @@ let pendingInputs = [];
 
 const canvas = document.getElementById('game');
 const renderer = createRenderer(canvas);
+const devMode = createDevMode();
 
 // --- 입력 ---
 // 클릭한 지점의 적 찾기: 선택 반경(selectionRadius) 안에 있는 적 중 마우스에 가장 가까운 적.
@@ -53,6 +55,7 @@ const inputControl = setupInput(canvas, {
   screenToWorld: (sx, sy) => renderer.camera.screenToWorld(sx, sy),
   pickEnemy,
   getDummyArmor: () => state.players.dummy?.armor,
+  isDevMode: devMode.isEnabled,
   onInput(input) {
     pendingInputs.push({ ...input, playerId: MY_ID });
     if (input.type === 'move') renderer.clickMarker.show(input.x, input.y);
@@ -73,10 +76,11 @@ startLoop({
       if (ev.type === 'damage' && target) {
         renderer.damageNumbers.add(ev, { x: target.x, y: target.y - target.gameplayRadius - 40 });
       }
+      renderer.combatLog.add(ev, state);
     }
   },
   render(alpha) {
-    renderer.render(prevState, state, alpha, MY_ID, { attackMoveMode: inputControl.isAttackMoveMode() });
+    renderer.render(prevState, state, alpha, MY_ID, { attackMoveMode: inputControl.isAttackMoveMode(), devMode: devMode.isEnabled() });
   },
 });
 
