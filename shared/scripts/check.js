@@ -127,7 +127,50 @@ if (!failed) {
     }
   }
 
-  // 5. 근접 평타: 투사체 없이 즉시 적중 (검사용 임시 챔피언)
+  // 5. 어택땅·정지
+  try {
+    const id = Object.keys(CHAMPIONS)[0];
+    const range = CHAMPIONS[id].attack.range;
+    const reach = range + 2 * CHAMPIONS[id].gameplayRadius; // 중심 거리 기준 사거리
+    // 사거리 안의 적 두 명 중 내 위치에 가까운 적을 고른다
+    let s = duel(id, reach - 50);
+    const { blue } = s.map.spawns;
+    s = addPlayer(s, createPlayer({ id: 'c', name: 'C', team: 'red', x: blue.x + 200, y: blue.y + 100, championId: id, isDummy: true }));
+    s = step(s, [{ playerId: 'a', type: 'attackMove', x: blue.x + 2000, y: blue.y }]);
+    if (s.players.a.attackTargetId !== 'c') throw new Error(`가장 가까운 적(c)이 아니라 ${s.players.a.attackTargetId}를 골랐습니다`);
+
+    // 사거리 안에 적이 없으면 목적지로 가다가, 적이 사거리에 들어오면 공격
+    s = duel(id, reach + 600);
+    s = step(s, [{ playerId: 'a', type: 'attackMove', x: blue.x + 3000, y: blue.y }]);
+    if (s.players.a.attackTargetId !== null || !s.players.a.target) throw new Error('사거리 밖인데 이동하지 않았습니다');
+    let ticks = 0;
+    while (s.players.a.attackTargetId === null && ticks < 300) {
+      s = step(s);
+      ticks++;
+    }
+    if (s.players.a.attackTargetId !== 'b') throw new Error('이동 중 사거리에 들어온 적을 공격하지 않았습니다');
+    const traveled = s.players.a.x - blue.x;
+    if (Math.abs(traveled - 600) > 30) throw new Error(`사거리 경계가 아닌 곳에서 공격을 시작했습니다 (이동 거리 ${traveled.toFixed(0)}, 예상 약 600)`);
+
+    // 대상이 죽으면 다시 목적지로 간다
+    s = { ...s, players: { ...s.players, b: { ...s.players.b, hp: 0 } } };
+    s = step(s);
+    s = step(s);
+    if (!s.players.a.target || s.players.a.attackMoveTarget === null) throw new Error('대상이 죽은 뒤 목적지로 다시 가지 않았습니다');
+
+    // 정지: 이동·어택땅 해제, 선딜레이 취소
+    s = step(s, [{ playerId: 'a', type: 'stop' }]);
+    if (s.players.a.target || s.players.a.attackMoveTarget || s.players.a.attackTargetId) throw new Error('정지 후에도 이동·공격 명령이 남아 있습니다');
+    s = step(duel(id), [attackB]);
+    s = step(s, [{ playerId: 'a', type: 'stop' }]);
+    if (s.players.a.attackWindup !== null || s.players.a.attackTimer !== 0) throw new Error('정지 명령으로 선딜레이가 취소되지 않았습니다');
+
+    console.log('✓ 어택땅·정지 (가장 가까운 적 선택, 이동 중 적 탐색, 대상 사망 후 재출발, 정지)');
+  } catch (e) {
+    fail(`어택땅·정지: ${e.message}`);
+  }
+
+  // 6. 근접 평타: 투사체 없이 즉시 적중 (검사용 임시 챔피언)
   try {
     const base = CHAMPIONS[Object.keys(CHAMPIONS)[0]];
     CHAMPIONS.__melee = { ...base, attack: { type: 'melee', range: 125, damage: 10, attackSpeed: 1, windupRatio: 0.25 } };

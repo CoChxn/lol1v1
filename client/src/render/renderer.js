@@ -30,8 +30,9 @@ export function createRenderer(canvas) {
    * @param {object} state  현재 틱 상태
    * @param {number} alpha  두 틱 사이 진행 비율(0~1)
    * @param {string} myId  내 플레이어 ID (카메라가 따라감)
+   * @param {object} [ui]  화면 상태 { attackMoveMode }
    */
-  function render(prevState, state, alpha, myId) {
+  function render(prevState, state, alpha, myId, ui = {}) {
     frames++;
     const now = performance.now();
     if (now - fpsTimer >= 1000) {
@@ -53,7 +54,7 @@ export function createRenderer(canvas) {
     // 월드
     camera.apply(ctx);
     drawArena(ctx, state.map);
-    if (me) drawRangeRing(ctx, me, focus.x, focus.y);
+    if (me) drawRangeRing(ctx, me, focus.x, focus.y, ui.attackMoveMode);
     clickMarker.draw(ctx);
     drawPlayers(ctx, prevState, state, alpha, myId);
     drawProjectiles(ctx, prevState, state, alpha);
@@ -73,11 +74,11 @@ export function createRenderer(canvas) {
       const atk = getChampion(me.championId).attack;
       const T = 1 / me.attackSpeed;
       ctx.fillText(
-        `attack speed ${me.attackSpeed.toFixed(3)}  T ${T.toFixed(3)}s  W ${computeWindup(atk, me.attackSpeed).toFixed(3)}s  [${me.attackState}]`,
+        `attack speed ${me.attackSpeed.toFixed(3)}  T ${T.toFixed(3)}s  W ${computeWindup(atk, me.attackSpeed).toFixed(3)}s  [${me.attackState}]${me.attackMoveTarget ? ' attack-move' : ''}`,
         10,
         140,
       );
-      ctx.fillText('[테스트] 1: 내 체력-100  2: 내 마나-50  3: 모두 회복  4: 둔화 40% 3초  5: 이속 +50% 3초  6: 공속 +100% 3초', 10, 80);
+      ctx.fillText('[테스트] 1: 내 체력-100  2: 내 마나-50  3: 모두 회복  4: 둔화 40% 3초  5: 이속 +50% 3초  6: 공속 +100% 3초  |  A+좌클릭: 어택땅  S: 정지', 10, 80);
     }
   }
 

@@ -49,12 +49,13 @@ function pickEnemy(wx, wy) {
   return best;
 }
 
-setupInput(canvas, {
+const inputControl = setupInput(canvas, {
   screenToWorld: (sx, sy) => renderer.camera.screenToWorld(sx, sy),
   pickEnemy,
   onInput(input) {
     pendingInputs.push({ ...input, playerId: MY_ID });
     if (input.type === 'move') renderer.clickMarker.show(input.x, input.y);
+    if (input.type === 'attackMove') renderer.clickMarker.show(input.x, input.y, '255, 90, 90');
   },
 });
 
@@ -67,7 +68,7 @@ startLoop({
     pendingInputs = [];
   },
   render(alpha) {
-    renderer.render(prevState, state, alpha, MY_ID);
+    renderer.render(prevState, state, alpha, MY_ID, { attackMoveMode: inputControl.isAttackMoveMode() });
   },
 });
 

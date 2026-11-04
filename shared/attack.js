@@ -80,12 +80,83 @@ export function orderAttack(player, target) {
     cancelWindup(player);
   }
   player.attackTargetId = target.id;
+  player.attackMoveTarget = null;
 }
 
-/** 평타 명령 해제 (이동·정지 명령 등). 선딜레이 중이었다면 평타도 취소된다. */
+/** 평타 명령 해제 (이동·정지 명령 등). 선딜레이 중이었다면 평타도 취소된다. 어택땅도 해제된다. */
 export function cancelAttack(player) {
   player.attackTargetId = null;
+  player.attackMoveTarget = null;
   cancelWindup(player);
+}
+
+/** 내 평타 사거리 안에서 내 위치 기준 가장 가까운 적 (없으면 null) */
+export function findNearestEnemyInRange(player, players) {
+  const range = getChampion(player.championId).attack.range;
+  let best = null;
+  let bestDist = Infinity;
+  for (const id in players) {
+    const other = players[id];
+    if (!canAttack(player, other)) continue;
+    const d = edgeDistance(player, other);
+    if (d <= range && d < bestDist) {
+      best = other;
+      bestDist = d;
+    }
+  }
+  return best;
+}
+
+/**
+ * 어택땅: 목적지로 이동하면서 사거리 안의 적을 공격한다.
+ * - 사거리 안에 적이 있으면 가장 가까운 적을 바로 대상으로 잡는다.
+ * - 없으면 목적지로 이동하고, 매 틱 다시 찾는다 (updateAttackMove).
+ */
+export function orderAttackMove(player, players, x, y, map) {
+  cancelAttack(player);
+  player.attackMoveTarget = { x, y };
+  const enemy = findNearestEnemyInRange(player, players);
+  if (enemy) {
+    player.attackTargetId = enemy.id;
+  } else {
+    setMoveTarget(player, x, y, map);
+  }
+}
+
+/** 정지: 이동·추적·어택땅을 멈춘다. 선딜레이 중이면 평타도 취소된다 (마지막 1틱 제외). */
+export function orderStop(player) {
+  cancelAttack(player);
+  player.target = null;
+}
+
+/**
+ * 어택땅 진행 (매 틱, updateAttack 전에 호출)
+ * - 공격 대상이 없으면 사거리 안의 적을 찾아 공격하고, 없으면 목적지로 계속 간다.
+ * - 목적지에 도착하면 어택땅이 끝난다.
+ */
+export function updateAttackMove(player, players, map) {
+  const dest = player.attackMoveTarget;
+  if (!dest || player.hp <= 0) return;
+
+  // 지금 공격 중인 대상이 살아 있으면 그대로 둔다
+  if (player.attackTargetId && canAttack(player, players[player.attackTargetId])) return;
+  player.attackTargetId = null;
+
+  const enemy = findNearestEnemyInRange(player, players);
+  if (enemy) {
+    player.attackTargetId = enemy.id;
+    return;
+  }
+
+  // 적이 없으면 목적지로. 이동 목표가 없는데 아직 멀면(공격하느라 멈췄던 경우) 다시 출발, 가까우면 도착
+  if (!player.target) {
+    const arrived = Math.hypot(dest.x - player.x, dest.y - player.y) <= player.pathingRadius;
+    if (arrived || player.attackWindup !== null) {
+      if (arrived) player.attackMoveTarget = null;
+    } else {
+      setMoveTarget(player, dest.x, dest.y, map);
+    }
+  }
 }
 
 /**

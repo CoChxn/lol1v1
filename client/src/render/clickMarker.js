@@ -6,8 +6,9 @@ export function createClickMarker() {
   let marker = null;
 
   return {
-    show(x, y) {
-      marker = { x, y, start: performance.now() };
+    /** color: 'r, g, b' 형식 (기본 초록 = 이동, 빨강 = 어택땅) */
+    show(x, y, color = '120, 255, 140') {
+      marker = { x, y, color, start: performance.now() };
     },
     draw(ctx) {
       if (!marker) return;
@@ -16,7 +17,7 @@ export function createClickMarker() {
         marker = null;
         return;
       }
-      ctx.strokeStyle = `rgba(120, 255, 140, ${1 - t})`;
+      ctx.strokeStyle = `rgba(${marker.color}, ${1 - t})`;
       ctx.lineWidth = 3;
       ctx.beginPath();
       ctx.arc(marker.x, marker.y, 18 * (1 - t) + 4, 0, Math.PI * 2);

@@ -36,6 +36,7 @@ export function createPlayer({ id, name, team, x, y, championId = DEFAULT_CHAMPI
     // 평타 상태
     attackState: 'idle', // 'idle' | 'chase' | 'windup' | 'cooldown'
     attackTargetId: null, // 평타 명령 대상 ID (추적·반복 공격)
+    attackMoveTarget: null, // 어택땅 목적지 {x, y}. 이동하면서 사거리 안의 적을 찾는다
     attackWindupTargetId: null, // 지금 선딜레이 중인 평타의 대상 ID
     attackSpeed: champ.attack.attackSpeed, // 총 공격속도. 매 틱 효과를 반영해 다시 계산한다
     attackTimer: 0, // 공격 타이머 남은 시간(초). 0이면 새 평타 가능
