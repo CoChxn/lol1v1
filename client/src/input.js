@@ -12,9 +12,10 @@
  * @param {(wx: number, wy: number) => string|null} opts.pickEnemy  그 지점에 있는 적 ID (없으면 null)
  * @param {(input: object) => void} opts.onInput  만들어진 입력 전달
  * @param {() => number|undefined} [opts.getDummyArmor]  [테스트용] 허수아비의 현재 방어력
+ * @param {() => boolean} [opts.isDevMode]  개발자 모드 여부 (테스트 키는 개발자 모드에서만 동작)
  * @returns {{ isAttackMoveMode: () => boolean }}
  */
-export function setupInput(canvas, { screenToWorld, pickEnemy, onInput, getDummyArmor = () => 0 }) {
+export function setupInput(canvas, { screenToWorld, pickEnemy, onInput, getDummyArmor = () => 0, isDevMode = () => false }) {
   let rightHeld = false;
   let attackMoveMode = false;
   let lastMouse = null;
@@ -76,7 +77,7 @@ export function setupInput(canvas, { screenToWorld, pickEnemy, onInput, getDummy
     attackMoveMode = false;
   });
 
-  // [테스트용] 숫자 키로 체력·마나 변경 (Phase 3 이후 제거 예정)
+  // [개발자 모드] 숫자 테스트 키
   const DEBUG_KEYS = { 1: 'damage', 2: 'spendMana', 3: 'restore', 4: 'slow', 5: 'haste', 6: 'attackSpeed', 7: 'crit' };
 
   window.addEventListener('keydown', (e) => {
@@ -89,6 +90,8 @@ export function setupInput(canvas, { screenToWorld, pickEnemy, onInput, getDummy
     } else if (key === 's') {
       attackMoveMode = false;
       onInput({ type: 'stop' });
+    } else if (!isDevMode()) {
+      // 아래 테스트 키는 개발자 모드에서만
     } else if (e.key === '8') {
       // [테스트용] 허수아비 방어력 변경
       const answer = window.prompt('허수아비 방어력 입력 (음수 가능)', String(getDummyArmor()));
