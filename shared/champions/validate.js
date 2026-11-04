@@ -6,6 +6,7 @@ const SCHEMA = {
   name: { type: 'string' },
   gameplayRadius: { type: 'number', minExclusive: 0 },
   pathingRadius: { type: 'number', minExclusive: 0 },
+  selectionRadius: { type: 'number', minExclusive: 0 },
   maxHp: { type: 'number', minExclusive: 0 },
   maxMana: { type: 'number', min: 0 },
   moveSpeed: { type: 'number', minExclusive: 0 },

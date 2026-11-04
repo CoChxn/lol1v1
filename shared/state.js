@@ -9,6 +9,7 @@ import { MAP_WIDTH, MAP_HEIGHT, SPAWN_POINTS } from './constants.js';
  * - players: 플레이어 목록 { [id]: player }
  * - projectiles: 날아가는 투사체 목록
  * - nextId: 다음에 만들 투사체 등의 고유 번호
+ * - deferredInputs: 다음 틱으로 미뤄진 입력
  */
 export function createGameState() {
   return {
@@ -25,6 +26,7 @@ export function createGameState() {
     players: {},
     projectiles: [],
     nextId: 1,
+    deferredInputs: [], // 명령 잠금 때문에 다음 틱으로 미뤄진 입력
   };
 }
 

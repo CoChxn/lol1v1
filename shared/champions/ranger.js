@@ -24,4 +24,7 @@ export default {
     projectileSpeed: 2000,
     projectileRadius: 8,
   },
+
+  // 클릭 선택 반경
+  selectionRadius: 75,
 };

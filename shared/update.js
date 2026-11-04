@@ -2,13 +2,24 @@
 import { setMoveTarget, movePlayer, computeMoveSpeed } from './movement.js';
 import { addEffect, tickEffects } from './effects.js';
 import { applyDamage, spendMana, restoreFull } from './combat.js';
-import { orderAttack, cancelAttack, updateAttack, updateProjectile, computeAttackSpeed } from './attack.js';
+import {
+  orderAttack,
+  orderAttackMove,
+  orderStop,
+  cancelAttack,
+  updateAttack,
+  updateAttackMove,
+  updateProjectile,
+  computeAttackSpeed,
+} from './attack.js';
 
 /**
  * @param {object} state  현재 게임 상태
  * @param {Array<object>} inputs  이번 틱에 처리할 입력 목록
  *   - { playerId, type: 'move', x, y }
  *   - { playerId, type: 'attack', targetId }
+ *   - { playerId, type: 'attackMove', x, y }  어택땅
+ *   - { playerId, type: 'stop' }  정지
  * @param {number} dt  흐른 시간(초)
  * @returns {object} 다음 게임 상태
  */
@@ -20,6 +31,9 @@ export function update(state, inputs, dt) {
   }
   let projectiles = state.projectiles.map((p) => ({ ...p }));
   let nextId = state.nextId;
+  // 발사 직후라 처리하지 못하고 미뤄 둔 명령을 먼저 처리한다
+  const allInputs = [...state.deferredInputs, ...inputs];
+  const deferredInputs = [];
 
   // 0. 지속 효과 시간 감소
   for (const id in players) {
@@ -27,18 +41,32 @@ export function update(state, inputs, dt) {
   }
 
   // 1. 입력 처리
-  for (const input of inputs) {
+  for (const input of allInputs) {
     const player = players[input.playerId];
     if (!player) continue;
+
+    // 발사 직후 1틱은 새 명령을 받지 않고 다음 틱으로 미룬다 (테스트용 입력은 제외)
+    if (player.commandLockTicks > 0 && input.type !== 'debug') {
+      deferredInputs.push(input);
+      continue;
+    }
 
     if (input.type === 'move') {
       cancelAttack(player);
       setMoveTarget(player, input.x, input.y, state.map);
     } else if (input.type === 'attack') {
       orderAttack(player, players[input.targetId]);
+    } else if (input.type === 'attackMove') {
+      orderAttackMove(player, players, input.x, input.y, state.map);
+    } else if (input.type === 'stop') {
+      orderStop(player);
     } else if (input.type === 'debug') {
       applyDebugInput(players, player, input.action);
     }
+  }
+
+  for (const id in players) {
+    if (players[id].commandLockTicks > 0) players[id].commandLockTicks--;
   }
 
   // 최종 이동속도·총 공격속도 계산 (이번 틱 이동·평타에 사용)
@@ -47,8 +75,9 @@ export function update(state, inputs, dt) {
     players[id].attackSpeed = computeAttackSpeed(players[id]);
   }
 
-  // 2. 평타 진행 (추격 이동 목표 설정, 발사)
+  // 2. 평타 진행 (어택땅 대상 찾기, 추적 이동 목표 설정, 발사)
   for (const id in players) {
+    updateAttackMove(players[id], players, state.map);
     const shot = updateAttack(players[id], players, state.map, dt);
     if (shot) projectiles.push({ id: nextId++, ...shot });
   }
@@ -68,6 +97,7 @@ export function update(state, inputs, dt) {
     players,
     projectiles,
     nextId,
+    deferredInputs,
   };
 }
 
