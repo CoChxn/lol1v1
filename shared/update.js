@@ -4,7 +4,7 @@ import { tickEffects } from './effects.js';
 import { dummyInputs } from './dummyAI.js';
 import { tickSkillCooldowns, updateCasting, updateSkillshot } from './skills.js';
 import { tickMarks } from './marks.js';
-import { submitCommand, runQueuedCommand } from './commands.js';
+import { submitCommand, runQueuedCommands } from './commands.js';
 import { updateAttack, updateAttackMove, updateProjectile, computeAttackSpeed } from './attack.js';
 
 /**
@@ -42,9 +42,9 @@ export function update(state, inputs, dt) {
     tickMarks(players[id], dt);
   }
 
-  // 1. 선입력 → 새 입력 처리 (commands.js: 지금 못 하는 명령은 슬롯 하나에 저장, 마지막 입력이 이긴다)
+  // 1. 선입력 → 새 입력 처리 (commands.js: 행동 불가 중 선입력 / 쿨타임 선입력)
   for (const id in players) {
-    runQueuedCommand(players, players[id], state.map);
+    runQueuedCommands(players, players[id], state.map);
   }
   for (const input of allInputs) {
     const player = players[input.playerId];
@@ -65,7 +65,7 @@ export function update(state, inputs, dt) {
   for (const id in players) {
     const wasCasting = !!players[id].casting;
     for (const shot of updateCasting(players[id], dt)) projectiles.push({ id: nextId++, ...shot });
-    if (wasCasting && !players[id].casting) runQueuedCommand(players, players[id], state.map);
+    if (wasCasting && !players[id].casting) runQueuedCommands(players, players[id], state.map);
   }
 
   // 2-1. 평타 진행 (어택땅 대상 찾기, 추적 이동 목표 설정, 발사)

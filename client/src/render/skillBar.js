@@ -43,7 +43,7 @@ export function drawSkillBar(ctx, width, height, player) {
     }
 
     // 테두리, 레벨, 마나
-    const queued = player.queuedCommand?.type === 'cast' && player.queuedCommand.skill === key;
+    const queued = !!player.queuedCasts?.[key] || (player.queuedCommand?.type === 'cast' && player.queuedCommand.skill === key);
     if (queued) {
       // 선입력됨: 테두리가 깜빡인다 (곧 시전됨)
       const blink = 0.5 + 0.5 * Math.sin(performance.now() / 60);

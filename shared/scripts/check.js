@@ -405,7 +405,7 @@ if (!failed) {
     }
   }
 
-  // 10. 선입력: 쿨타임 선입력(queueTime), 시전 중 선입력, 마지막 입력이 이김, 정지는 저장 안 함, castBuffer 'deny'
+  // 10. 선입력: ① 행동 불가 중(슬롯 하나, 마지막 입력) ② 쿨타임 선입력(스킬별, 이동으로 안 지워짐), 정지, castBuffer 'deny'
   for (const id in CHAMPIONS) {
     const skills = CHAMPIONS[id].skills ?? {};
     const keys = Object.keys(skills);
@@ -420,11 +420,11 @@ if (!failed) {
         const q = skills[k].queueTime ?? 0;
         // 허용 시간 밖: 저장 안 됨
         let s = step(setCd(duel(id, 2000), k, q + 0.2), [cast(k)]);
-        if (s.players.a.queuedCommand) throw new Error(`${k}: 쿨타임이 ${(q + 0.2).toFixed(2)}초 남았는데 선입력이 저장되었습니다`);
+        if (s.players.a.queuedCasts[k] || s.players.a.queuedCommand) throw new Error(`${k}: 쿨타임이 ${(q + 0.2).toFixed(2)}초 남았는데 선입력이 저장되었습니다`);
         if (q > 0) {
           // 허용 시간 안: 저장 → 쿨타임이 끝나는 틱에 시전
           s = step(setCd(duel(id, 2000), k, q), [cast(k)]);
-          if (s.players.a.queuedCommand?.skill !== k) throw new Error(`${k}: 쿨타임 ${q}초 남았을 때 선입력이 저장되지 않았습니다`);
+          if (!s.players.a.queuedCasts[k]) throw new Error(`${k}: 쿨타임 ${q}초 남았을 때 쿨타임 선입력이 저장되지 않았습니다`);
           let ticks = 1;
           while (!s.players.a.casting && ticks < 60) {
             s = step(s);
@@ -437,10 +437,50 @@ if (!failed) {
       }
 
       const [k1, k2] = keys;
+      const move = (dy) => ({ playerId: 'a', type: 'move', x: blue.x, y: blue.y + dy });
+      const qKey = keys.find((k) => (skills[k].queueTime ?? 0) >= 0.2);
+      if (qKey) {
+        const q = skills[qKey].queueTime;
+        // 쿨타임 선입력은 이동·평타 명령으로 지워지지 않는다
+        let t = step(setCd(duel(id, 2000), qKey, q - 0.05), [cast(qKey)]);
+        t = step(t, [move(300)]);
+        t = step(t, [move(-300)]);
+        t = step(t, [{ playerId: 'a', type: 'attack', targetId: 'b' }]);
+        if (!t.players.a.queuedCasts[qKey]) throw new Error('이동·평타 명령에 쿨타임 선입력이 지워졌습니다');
+        let fired = false;
+        for (let i = 0; i < 30 && !fired; i++) {
+          t = step(t);
+          fired = t.players.a.casting?.skill === qKey;
+        }
+        if (!fired) throw new Error('무빙 중에 저장한 쿨타임 선입력이 실행되지 않았습니다');
+        // 정지(S)로 취소
+        t = step(setCd(duel(id, 2000), qKey, q - 0.05), [cast(qKey), { playerId: 'a', type: 'stop' }]);
+        if (t.players.a.queuedCasts[qKey]) throw new Error('정지로 쿨타임 선입력이 취소되지 않았습니다');
+        // 다른 스킬이 실제로 시전되면 취소
+        const other = keys.find((k) => k !== qKey);
+        if (other) {
+          t = step(setCd(duel(id, 2000), qKey, q - 0.05), [cast(qKey)]);
+          t = step(t, [cast(other)]);
+          if (t.players.a.casting?.skill !== other || t.players.a.queuedCasts[qKey]) throw new Error('다른 스킬이 시전됐는데 쿨타임 선입력이 남아 있습니다');
+          // 다른 스킬이 쿨타임 중이라 나가지 않으면 유지
+          t = step(setCd(setCd(duel(id, 2000), qKey, q - 0.05), other, 3), [cast(qKey)]);
+          t = step(t, [cast(other)]);
+          if (!t.players.a.queuedCasts[qKey]) throw new Error('다른 스킬이 시전되지 않았는데 쿨타임 선입력이 취소되었습니다');
+        }
+        // 평타 발사 직후 1틱의 스킬 입력: 행동 불가 슬롯 → 다음 틱에 쿨타임 중이면 쿨타임 선입력으로 옮겨짐
+        t = duel(id, 400);
+        t = step(t, [attackB]);
+        while (t.players.a.attackWindup !== null) t = step(t);
+        t = setCd(t, qKey, q - 0.05);
+        t = step(t, [cast(qKey)]);
+        if (t.players.a.queuedCommand?.skill !== qKey || t.players.a.queuedCasts[qKey]) throw new Error('발사 직후 틱의 스킬 입력이 행동 불가 슬롯에 들어가지 않았습니다');
+        t = step(t);
+        if (t.players.a.queuedCommand || !t.players.a.queuedCasts[qKey]) throw new Error('잠금이 풀린 뒤 쿨타임 중인 스킬이 쿨타임 선입력으로 옮겨지지 않았습니다');
+      }
       // 시전 중 선입력: 시전 중 이동 → 시전이 끝나는 틱에 이동 시작
       let s = step(duel(id, 2000), [cast(k1)]);
       s = step(s, [{ playerId: 'a', type: 'move', x: blue.x, y: blue.y + 500 }]);
-      if (s.players.a.queuedCommand?.type !== 'move' || s.players.a.target) throw new Error('시전 중 이동 명령이 선입력으로 저장되지 않았습니다');
+      if (s.players.a.queuedCommand?.type !== 'move' || s.players.a.target) throw new Error('시전 중 이동 명령이 행동 불가 선입력으로 저장되지 않았습니다');
       while (s.players.a.casting) s = step(s);
       if (!s.players.a.target || s.players.a.queuedCommand) throw new Error('시전이 끝난 틱에 선입력된 이동이 실행되지 않았습니다');
       // 마지막 입력이 이김: 시전 중 이동 → 다른 스킬 → 시전이 끝나면 스킬만
@@ -470,7 +510,7 @@ if (!failed) {
         if (saved === undefined) delete act.castBuffer;
         else act.castBuffer = saved;
       }
-      console.log(`✓ ${id} 선입력 (쿨타임: ${keys.map((k) => `${k} ${skills[k].queueTime ?? 0}초`).join(', ')} / 시전 중 저장·종료 틱 실행 / 마지막 입력 / 정지 / deny)`);
+      console.log(`✓ ${id} 선입력 (쿨타임 선입력 ${keys.map((k) => `${k} ${skills[k].queueTime ?? 0}초`).join(', ')}: 무빙에 유지·정지/다른 스킬 시전으로 취소·발사 직후 틱 분리 / 행동 불가: 시전 종료 틱 실행·마지막 입력·정지·deny)`);
     } catch (e) {
       fail(`${id} 선입력: ${e.message}`);
     }

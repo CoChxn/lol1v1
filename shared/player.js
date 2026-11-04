@@ -54,7 +54,8 @@ export function createPlayer({ id, name, team, x, y, championId = DEFAULT_CHAMPI
     attackWindup: null, // 선딜레이 남은 시간(초). null이면 선딜레이 중 아님
     attackWindupTotal: 0, // 이번 선딜레이 전체 길이 W (표시용)
     commandLockTicks: 0, // 남은 명령 잠금 틱 수. 0보다 크면 새 명령을 선입력으로 저장한다 (발사 직후 1틱)
-    queuedCommand: null, // 선입력 슬롯 (commands.js). 지금 못 하는 명령 하나, 마지막 입력이 이긴다
+    queuedCommand: null, // 행동 불가 중 선입력 슬롯 (commands.js). 명령 하나, 마지막 입력이 이긴다
+    queuedCasts: {}, // 쿨타임 선입력 (commands.js). 스킬별 { Q: { x, y } }, 이동·평타로는 지워지지 않음
     targetable: true, // false면 평타·스킬의 대상이 될 수 없다
     invulnerable: false, // true면 피해를 받지 않는다 (무적)
     noCooldown: false, // [개발자 모드] true면 스킬 쿨타임이 돌지 않는다

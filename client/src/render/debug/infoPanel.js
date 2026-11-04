@@ -88,13 +88,15 @@ export function drawTimeBanner(ctx, width, state, { paused, scale }) {
   ctx.textAlign = 'start';
 }
 
-/** 선입력 슬롯 표시 */
+/** 선입력 표시: 행동 불가 중 선입력(슬롯 하나) / 쿨타임 선입력(스킬별) */
 function formatQueued(p) {
+  const parts = [];
   const c = p.queuedCommand;
-  if (!c) return '-';
-  if (c.type === 'cast') {
-    const cd = p.skills[c.skill]?.cooldown ?? 0;
-    return `cast ${c.skill}${cd > 0 ? ` (쿨 ${cd.toFixed(2)}초 남음)` : ''}${p.casting ? ` (시전 중 ${p.casting.skill})` : ''}`;
+  if (c) {
+    const why = p.casting ? `시전 중 ${p.casting.skill}` : p.commandLockTicks > 0 ? '발사 직후' : '';
+    parts.push(`행동불가: ${c.type}${c.skill ? ` ${c.skill}` : ''}${why ? ` (${why})` : ''}`);
   }
-  return `${c.type}${p.casting ? ` (시전 중 ${p.casting.skill})` : p.commandLockTicks > 0 ? ' (발사 직후)' : ''}`;
+  const casts = Object.keys(p.queuedCasts ?? {});
+  if (casts.length) parts.push(`쿨타임: ${casts.map((k) => `${k} (${(p.skills[k]?.cooldown ?? 0).toFixed(2)}초)`).join(', ')}`);
+  return parts.join('  |  ') || '-';
 }
