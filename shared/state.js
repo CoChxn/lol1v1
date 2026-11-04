@@ -10,8 +10,10 @@ import { MAP_WIDTH, MAP_HEIGHT, SPAWN_POINTS } from './constants.js';
  * - projectiles: 날아가는 투사체 목록
  * - nextId: 다음에 만들 투사체 등의 고유 번호
  * - deferredInputs: 다음 틱으로 미뤄진 입력
+ * - rngSeed: 난수 시드 (치명타 등). 같은 시드면 같은 결과
+ * - events: 이번 틱에 일어난 일 (데미지 등). 화면 효과용, 매 틱 새로 만든다
  */
-export function createGameState() {
+export function createGameState({ seed = 1 } = {}) {
   return {
     time: 0,
     tick: 0,
@@ -27,6 +29,8 @@ export function createGameState() {
     projectiles: [],
     nextId: 1,
     deferredInputs: [], // 명령 잠금 때문에 다음 틱으로 미뤄진 입력
+    rngSeed: seed,
+    events: [],
   };
 }
 

@@ -10,12 +10,15 @@ const SCHEMA = {
   maxHp: { type: 'number', minExclusive: 0 },
   maxMana: { type: 'number', min: 0 },
   moveSpeed: { type: 'number', minExclusive: 0 },
+  armor: { type: 'number', min: 0 },
+  critChance: { type: 'number', min: 0, max: 1 },
+  critDamage: { type: 'number', min: 1 },
   attack: {
     type: 'object',
     fields: {
       type: { type: 'string', optional: true, oneOf: ['ranged', 'melee'] }, // 기본 'ranged'
       range: { type: 'number', minExclusive: 0 },
-      damage: { type: 'number', min: 0 },
+      damage: { type: 'number', min: 0 }, // 공격력(AD)
       attackSpeed: { type: 'number', minExclusive: 0 }, // 기본 공격속도 b
       attackSpeedRatio: { type: 'number', min: 0, optional: true }, // 공격속도 계수 m, 기본 = b
       windupRatio: { type: 'number', minExclusive: 0, max: 1 }, // 선딜레이 비율 p
