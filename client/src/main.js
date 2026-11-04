@@ -22,6 +22,8 @@ const MY_ID = 'local'; // Phase 4에서 서버가 준 ID로 바뀐다
 let state = createGameState();
 const spawn = state.map.spawns.blue;
 state = addPlayer(state, createPlayer({ id: MY_ID, name: 'Player', team: 'blue', x: spawn.x, y: spawn.y }));
+// 연습용 허수아비: 입력을 받지 않으므로 움직이지 않는다 (Phase 3 전투 테스트용)
+state = addPlayer(state, createPlayer({ id: 'dummy', name: 'Dummy', team: 'red', x: 1500, y: 700, isDummy: true }));
 let prevState = state;
 let pendingInputs = [];
 
