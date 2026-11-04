@@ -1,20 +1,11 @@
 // 게임 로직 한 틱. 순수 함수: 입력 상태를 바꾸지 않고 새 상태를 돌려준다.
-import { setMoveTarget, movePlayer, computeMoveSpeed } from './movement.js';
+import { movePlayer, computeMoveSpeed } from './movement.js';
 import { tickEffects } from './effects.js';
-import { applyDebugInput } from './debug.js';
 import { dummyInputs } from './dummyAI.js';
-import { orderCast, tickSkillCooldowns, updateCasting, updateSkillshot } from './skills.js';
+import { tickSkillCooldowns, updateCasting, updateSkillshot } from './skills.js';
 import { tickMarks } from './marks.js';
-import {
-  orderAttack,
-  orderAttackMove,
-  orderStop,
-  cancelAttack,
-  updateAttack,
-  updateAttackMove,
-  updateProjectile,
-  computeAttackSpeed,
-} from './attack.js';
+import { submitCommand, runQueuedCommand } from './commands.js';
+import { updateAttack, updateAttackMove, updateProjectile, computeAttackSpeed } from './attack.js';
 
 /**
  * @param {object} state  현재 게임 상태
@@ -39,10 +30,8 @@ export function update(state, inputs, dt) {
   }
   let projectiles = state.projectiles.map((p) => ({ ...p }));
   let nextId = state.nextId;
-  // 발사 직후라 처리하지 못하고 미뤄 둔 명령을 먼저 처리한다
   // 허수아비 행동(개발자 모드)이 만든 입력도 일반 입력과 똑같이 처리한다
-  const allInputs = [...state.deferredInputs, ...inputs, ...dummyInputs(players)];
-  const deferredInputs = [];
+  const allInputs = [...inputs, ...dummyInputs(players)];
   // 난수·이벤트 (난수 시드는 다음 상태로 이어진다)
   const ctx = { rng: { seed: state.rngSeed }, events: [] };
 
@@ -53,31 +42,13 @@ export function update(state, inputs, dt) {
     tickMarks(players[id], dt);
   }
 
-  // 1. 입력 처리
+  // 1. 선입력 → 새 입력 처리 (commands.js: 지금 못 하는 명령은 슬롯 하나에 저장, 마지막 입력이 이긴다)
+  for (const id in players) {
+    runQueuedCommand(players, players[id], state.map);
+  }
   for (const input of allInputs) {
     const player = players[input.playerId];
-    if (!player) continue;
-
-    // 발사 직후 1틱은 새 명령을 받지 않고 다음 틱으로 미룬다 (테스트용 입력은 제외)
-    if (player.commandLockTicks > 0 && input.type !== 'debug') {
-      deferredInputs.push(input);
-      continue;
-    }
-
-    if (input.type === 'move') {
-      cancelAttack(player);
-      setMoveTarget(player, input.x, input.y, state.map);
-    } else if (input.type === 'attack') {
-      orderAttack(player, players[input.targetId]);
-    } else if (input.type === 'attackMove') {
-      orderAttackMove(player, players, input.x, input.y, state.map);
-    } else if (input.type === 'stop') {
-      orderStop(player);
-    } else if (input.type === 'cast') {
-      orderCast(player, input.skill, input.x, input.y);
-    } else if (input.type === 'debug') {
-      applyDebugInput(players, player, input, state.map);
-    }
+    if (player) submitCommand(players, player, input, state.map);
   }
 
   for (const id in players) {
@@ -90,16 +61,18 @@ export function update(state, inputs, dt) {
     players[id].attackSpeed = computeAttackSpeed(players[id]);
   }
 
-  // 2. 평타 진행 (어택땅 대상 찾기, 추적 이동 목표 설정, 발사)
+  // 2. 스킬 시전 진행 (시전 시간이 끝나면 발동하고, 그 틱에 바로 시전 중 선입력을 실행)
+  for (const id in players) {
+    const wasCasting = !!players[id].casting;
+    for (const shot of updateCasting(players[id], dt)) projectiles.push({ id: nextId++, ...shot });
+    if (wasCasting && !players[id].casting) runQueuedCommand(players, players[id], state.map);
+  }
+
+  // 2-1. 평타 진행 (어택땅 대상 찾기, 추적 이동 목표 설정, 발사)
   for (const id in players) {
     updateAttackMove(players[id], players, state.map);
     const shot = updateAttack(players[id], players, state.map, dt, ctx);
     if (shot) projectiles.push({ id: nextId++, ...shot });
-  }
-
-  // 2-1. 스킬 시전 진행 (시전 시간이 끝나면 발동)
-  for (const id in players) {
-    for (const shot of updateCasting(players[id], dt)) projectiles.push({ id: nextId++, ...shot });
   }
 
   // 3. 이동
@@ -119,7 +92,6 @@ export function update(state, inputs, dt) {
     players,
     projectiles,
     nextId,
-    deferredInputs,
     rngSeed: ctx.rng.seed,
     events: ctx.events,
   };

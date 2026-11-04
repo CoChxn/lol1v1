@@ -12,6 +12,7 @@ export const SKILL_KEYS = ['Q', 'W', 'E', 'R'];
 // 구현된 값만 허용한다. 새 방식을 구현하면 oneOf와 아래 규칙에 추가한다.
 const SKILL_SCHEMA = {
   name: { type: 'string' },
+  queueTime: { type: 'number', min: 0, optional: true }, // 쿨타임 선입력 허용 시간 (초, 기본 0)
   manaCost: { type: 'levels', min: 0 },
   cooldown: { type: 'levels', min: 0 },
   targeting: {
@@ -27,6 +28,7 @@ const SKILL_SCHEMA = {
     fields: {
       type: { type: 'string', oneOf: ['normal'] },
       castTime: { type: 'number', min: 0 },
+      castBuffer: { type: 'string', oneOf: ['allow', 'deny'], optional: true }, // 시전 중 선입력 (기본 allow)
     },
   },
   effects: { type: 'list', of: 'effect' },

@@ -25,6 +25,7 @@ function unitLines(label, p) {
     `  attack speed ${p.attackSpeed.toFixed(3)} (base ${p.baseAttackSpeed.toFixed(3)})  T ${(1 / p.attackSpeed).toFixed(3)}s  W ${computeWindup(atk, p.attackSpeed, p.baseAttackSpeed).toFixed(3)}s`,
     `  attack [${p.attackState}]${p.attackMoveTarget ? ' attack-move' : ''}  AD ${p.attackDamage}  range ${atk.range} (+${WINDUP_CANCEL_LEEWAY})`,
     `  skills ${Object.entries(p.skills).map(([k, st]) => `${k} Lv${st.level} cd ${st.cooldown.toFixed(2)}`).join('  ') || '-'}${p.casting ? `  [시전 중 ${p.casting.skill} ${p.casting.remaining.toFixed(2)}s]` : ''}  AP ${p.abilityPower}  bonus AD ${p.attackDamage - p.baseAttackDamage}${p.marks.length ? `  [표식 ${p.marks.map((m) => `${m.skill} ${m.remaining.toFixed(1)}s`).join(', ')}]` : ''}`,
+    `  선입력 ${formatQueued(p)}`,
     `  effects ${effects}${p.invulnerable ? '  [무적]' : ''}${p.infiniteMana ? '  [무한 마나]' : ''}${p.noCooldown ? '  [쿨타임 없음]' : ''}${p.isDummy ? `  [행동: ${p.dummyMode}]` : ''}`,
   ];
 }
@@ -85,4 +86,15 @@ export function drawTimeBanner(ctx, width, state, { paused, scale }) {
   ctx.textAlign = 'center';
   ctx.fillText(text, width / 2, 33);
   ctx.textAlign = 'start';
+}
+
+/** 선입력 슬롯 표시 */
+function formatQueued(p) {
+  const c = p.queuedCommand;
+  if (!c) return '-';
+  if (c.type === 'cast') {
+    const cd = p.skills[c.skill]?.cooldown ?? 0;
+    return `cast ${c.skill}${cd > 0 ? ` (쿨 ${cd.toFixed(2)}초 남음)` : ''}${p.casting ? ` (시전 중 ${p.casting.skill})` : ''}`;
+  }
+  return `${c.type}${p.casting ? ` (시전 중 ${p.casting.skill})` : p.commandLockTicks > 0 ? ' (발사 직후)' : ''}`;
 }

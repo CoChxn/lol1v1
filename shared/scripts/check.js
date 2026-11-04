@@ -97,11 +97,11 @@ if (!failed) {
 
       // 발사 직후 1틱 동안의 명령은 다음 틱으로 미뤄진다
       // 발사 틱에 들어온 이동 명령은 잠금 전에 처리되므로 미뤄지지 않고 바로 이동 목표가 된다
-      if (s.deferredInputs.length !== 0 || s.players.a.target === null) throw new Error('발사 틱의 이동 명령이 처리되지 않았습니다');
+      if (s.players.a.queuedCommand !== null || s.players.a.target === null) throw new Error('발사 틱의 이동 명령이 처리되지 않았습니다');
       s = step(duel(id), [attackB]);
       while (s.players.a.attackWindup !== null) s = step(s);
       s = step(s, [moveAway]); // 발사 다음 틱
-      if (s.players.a.target !== null || s.deferredInputs.length !== 1) throw new Error('발사 직후 틱의 명령이 미뤄지지 않았습니다');
+      if (s.players.a.target !== null || s.players.a.queuedCommand?.type !== 'move') throw new Error('발사 직후 틱의 명령이 선입력으로 저장되지 않았습니다');
       s = step(s);
       if (s.players.a.target === null) throw new Error('미뤄진 명령이 다음 틱에 처리되지 않았습니다');
 
@@ -405,7 +405,78 @@ if (!failed) {
     }
   }
 
-  // 10. 근접 평타: 투사체 없이 즉시 적중 (검사용 임시 챔피언)
+  // 10. 선입력: 쿨타임 선입력(queueTime), 시전 중 선입력, 마지막 입력이 이김, 정지는 저장 안 함, castBuffer 'deny'
+  for (const id in CHAMPIONS) {
+    const skills = CHAMPIONS[id].skills ?? {};
+    const keys = Object.keys(skills);
+    if (!keys.length) continue;
+    try {
+      const { blue } = createGameState().map.spawns;
+      const cast = (k, x = blue.x + 1000) => ({ playerId: 'a', type: 'cast', skill: k, x, y: blue.y });
+      const withA = (s, patch) => ({ ...s, players: { ...s.players, a: { ...s.players.a, ...patch } } });
+      const setCd = (s, k, cd) => withA(s, { skills: { ...s.players.a.skills, [k]: { ...s.players.a.skills[k], cooldown: cd } } });
+
+      for (const k of keys) {
+        const q = skills[k].queueTime ?? 0;
+        // 허용 시간 밖: 저장 안 됨
+        let s = step(setCd(duel(id, 2000), k, q + 0.2), [cast(k)]);
+        if (s.players.a.queuedCommand) throw new Error(`${k}: 쿨타임이 ${(q + 0.2).toFixed(2)}초 남았는데 선입력이 저장되었습니다`);
+        if (q > 0) {
+          // 허용 시간 안: 저장 → 쿨타임이 끝나는 틱에 시전
+          s = step(setCd(duel(id, 2000), k, q), [cast(k)]);
+          if (s.players.a.queuedCommand?.skill !== k) throw new Error(`${k}: 쿨타임 ${q}초 남았을 때 선입력이 저장되지 않았습니다`);
+          let ticks = 1;
+          while (!s.players.a.casting && ticks < 60) {
+            s = step(s);
+            ticks++;
+          }
+          const expected = Math.ceil(q * 30 - 1e-6) + (Math.abs(q * 30 - Math.round(q * 30)) < 1e-6 ? 1 : 0);
+          if (!s.players.a.casting) throw new Error(`${k}: 쿨타임 선입력이 실행되지 않았습니다`);
+          if (Math.abs(ticks - expected) > 1) throw new Error(`${k}: 쿨타임이 끝난 틱에 바로 시전되지 않았습니다 (${ticks}틱)`);
+        }
+      }
+
+      const [k1, k2] = keys;
+      // 시전 중 선입력: 시전 중 이동 → 시전이 끝나는 틱에 이동 시작
+      let s = step(duel(id, 2000), [cast(k1)]);
+      s = step(s, [{ playerId: 'a', type: 'move', x: blue.x, y: blue.y + 500 }]);
+      if (s.players.a.queuedCommand?.type !== 'move' || s.players.a.target) throw new Error('시전 중 이동 명령이 선입력으로 저장되지 않았습니다');
+      while (s.players.a.casting) s = step(s);
+      if (!s.players.a.target || s.players.a.queuedCommand) throw new Error('시전이 끝난 틱에 선입력된 이동이 실행되지 않았습니다');
+      // 마지막 입력이 이김: 시전 중 이동 → 다른 스킬 → 시전이 끝나면 스킬만
+      if (k2) {
+        s = step(duel(id, 2000), [cast(k1)]);
+        s = step(s, [{ playerId: 'a', type: 'move', x: blue.x, y: blue.y + 500 }]);
+        s = step(s, [cast(k2)]);
+        while (s.players.a.casting?.skill === k1) s = step(s);
+        if (s.players.a.casting?.skill !== k2 || s.players.a.target) throw new Error('마지막 입력(스킬)이 이전 선입력(이동)을 덮어쓰지 않았습니다');
+      }
+      // 정지는 저장하지 않고 바로: 선입력도 지운다
+      s = step(duel(id, 2000), [cast(k1)]);
+      s = step(s, [{ playerId: 'a', type: 'move', x: blue.x, y: blue.y + 500 }]);
+      s = step(s, [{ playerId: 'a', type: 'stop' }]);
+      if (s.players.a.queuedCommand) throw new Error('정지가 선입력을 지우지 않았습니다');
+      while (s.players.a.casting) s = step(s);
+      if (s.players.a.target) throw new Error('정지했는데 시전 후 이동했습니다');
+      // castBuffer 'deny': 시전 중 명령은 버린다 (검사용으로 잠시 바꿈)
+      const act = skills[k1].activation;
+      const saved = act.castBuffer;
+      act.castBuffer = 'deny';
+      try {
+        s = step(duel(id, 2000), [cast(k1)]);
+        s = step(s, [{ playerId: 'a', type: 'move', x: blue.x, y: blue.y + 500 }]);
+        if (s.players.a.queuedCommand) throw new Error("castBuffer 'deny'인데 선입력이 저장되었습니다");
+      } finally {
+        if (saved === undefined) delete act.castBuffer;
+        else act.castBuffer = saved;
+      }
+      console.log(`✓ ${id} 선입력 (쿨타임: ${keys.map((k) => `${k} ${skills[k].queueTime ?? 0}초`).join(', ')} / 시전 중 저장·종료 틱 실행 / 마지막 입력 / 정지 / deny)`);
+    } catch (e) {
+      fail(`${id} 선입력: ${e.message}`);
+    }
+  }
+
+  // 11. 근접 평타: 투사체 없이 즉시 적중 (검사용 임시 챔피언)
   try {
     const base = CHAMPIONS[Object.keys(CHAMPIONS)[0]];
     CHAMPIONS.__melee = { ...base, attack: { type: 'melee', range: 125, damage: 10, attackSpeed: 1, windupRatio: 0.25 } };

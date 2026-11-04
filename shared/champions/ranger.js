@@ -38,6 +38,7 @@ export default {
     // Q 비전 화살: 방향 지정 + 일반 발동 + 투사체(처음 맞은 적) → 물리 피해, 적중 시 모든 스킬 쿨타임 감소
     Q: {
       name: '비전 화살',
+      queueTime: 0.05,
       manaCost: [28, 31, 34, 37, 40],
       cooldown: [5.5, 5.25, 5, 4.75, 4.5],
       targeting: {
@@ -63,6 +64,7 @@ export default {
     //   표식이 붙은 대상을 시전자의 평타나 다른 스킬로 맞히면 터지면서 마법 피해 + 마나 회복
     W: {
       name: '공명 구체',
+      queueTime: 0.5,
       manaCost: [50, 50, 50, 50, 50],
       cooldown: [8, 8, 8, 8, 8],
       targeting: {

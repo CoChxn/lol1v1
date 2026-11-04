@@ -43,8 +43,16 @@ export function drawSkillBar(ctx, width, height, player) {
     }
 
     // 테두리, 레벨, 마나
-    ctx.strokeStyle = reason === null ? '#cfa' : '#556';
-    ctx.lineWidth = 2;
+    const queued = player.queuedCommand?.type === 'cast' && player.queuedCommand.skill === key;
+    if (queued) {
+      // 선입력됨: 테두리가 깜빡인다 (곧 시전됨)
+      const blink = 0.5 + 0.5 * Math.sin(performance.now() / 60);
+      ctx.strokeStyle = `rgba(255, 230, 90, ${0.4 + 0.6 * blink})`;
+      ctx.lineWidth = 4;
+    } else {
+      ctx.strokeStyle = reason === null ? '#cfa' : '#556';
+      ctx.lineWidth = 2;
+    }
     ctx.strokeRect(x, y, SIZE, SIZE);
     ctx.font = '11px sans-serif';
     ctx.textBaseline = 'alphabetic';
