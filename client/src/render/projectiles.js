@@ -11,37 +11,28 @@ export function drawProjectiles(ctx, prevState, state, alpha) {
     const team = proj.team ?? owner?.team;
     const color = team === 'red' ? '255, 120, 90' : '120, 200, 255';
 
-    if (proj.kind === 'skillshot' && proj.shape === 'orb') {
-      // 구체: 둥근 빛 덩어리
-      const glow = ctx.createRadialGradient(x, y, 0, x, y, proj.radius * 1.4);
-      glow.addColorStop(0, 'rgba(255, 255, 255, 0.95)');
-      glow.addColorStop(0.35, `rgba(${color}, 0.85)`);
-      glow.addColorStop(1, `rgba(${color}, 0)`);
-      ctx.fillStyle = glow;
-      ctx.beginPath();
-      ctx.arc(x, y, proj.radius * 1.4, 0, Math.PI * 2);
-      ctx.fill();
-      continue;
-    }
-
     if (proj.kind === 'skillshot') {
-      // 직선 투사체: 진행 방향으로 길쭉한 빛 화살
-      ctx.save();
-      ctx.translate(x, y);
-      ctx.rotate(Math.atan2(proj.dirY, proj.dirX));
-      ctx.fillStyle = `rgba(${color}, 0.25)`;
+      // 스킬 투사체: 판정(히트박스)과 똑같은 크기의 원으로 그린다
+      //   orb(예: W): 노란색 / bolt(예: Q): 팀 색
+      const fill = proj.shape === 'orb' ? '255, 210, 60' : color;
+      const r = proj.radius;
+      ctx.fillStyle = `rgba(${fill}, 0.55)`;
+      ctx.strokeStyle = `rgba(${fill}, 1)`;
+      ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.ellipse(-proj.radius, 0, proj.radius * 2.6, proj.radius, 0, 0, Math.PI * 2);
+      ctx.arc(x, y, r, 0, Math.PI * 2);
       ctx.fill();
-      ctx.fillStyle = `rgba(${color}, 0.9)`;
+      ctx.stroke();
+      // 진행 방향 표시: 원 안쪽 앞부분에 밝은 점 (원 밖으로 나가지 않음)
+      const hx = x + proj.dirX * r * 0.45;
+      const hy = y + proj.dirY * r * 0.45;
+      const core = ctx.createRadialGradient(hx, hy, 0, hx, hy, r * 0.5);
+      core.addColorStop(0, 'rgba(255, 255, 255, 0.95)');
+      core.addColorStop(1, `rgba(${fill}, 0)`);
+      ctx.fillStyle = core;
       ctx.beginPath();
-      ctx.ellipse(0, 0, proj.radius * 1.4, proj.radius * 0.45, 0, 0, Math.PI * 2);
+      ctx.arc(hx, hy, r * 0.5, 0, Math.PI * 2);
       ctx.fill();
-      ctx.fillStyle = '#fff';
-      ctx.beginPath();
-      ctx.ellipse(proj.radius * 0.4, 0, proj.radius * 0.6, proj.radius * 0.2, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
       continue;
     }
 
