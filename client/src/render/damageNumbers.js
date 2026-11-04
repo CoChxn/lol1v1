@@ -8,6 +8,12 @@ const DAMAGE_COLORS = {
 };
 
 const DURATION = 0.9; // 초
+
+// 치명타 숫자 앞에 붙는 아이콘 (client/public/images/crit.png)
+const critIcon = new Image();
+critIcon.src = '/images/crit.png';
+const CRIT_ICON_SCALE = 1.1; // 아이콘 높이 = 글자 크기 × 이 값
+const CRIT_ICON_GAP = 2; // 아이콘과 숫자 사이 간격
 const RISE = 50; // 떠오르는 높이
 
 export function createDamageNumbers() {
@@ -38,9 +44,19 @@ export function createDamageNumbers() {
         ctx.lineWidth = 4;
         ctx.strokeStyle = 'rgba(0, 0, 0, 0.8)';
         const y = it.y - RISE * t;
-        ctx.strokeText(it.text, it.x, y);
+        let textX = it.x;
+        // 치명타: 아이콘 + 숫자를 한 묶음으로 가운데 정렬
+        if (it.crit && critIcon.complete && critIcon.naturalWidth > 0) {
+          const iconH = size * CRIT_ICON_SCALE;
+          const iconW = iconH * (critIcon.naturalWidth / critIcon.naturalHeight);
+          const textW = ctx.measureText(it.text).width;
+          const left = it.x - (iconW + CRIT_ICON_GAP + textW) / 2;
+          ctx.drawImage(critIcon, left, y - iconH / 2, iconW, iconH);
+          textX = left + iconW + CRIT_ICON_GAP + textW / 2;
+        }
+        ctx.strokeText(it.text, textX, y);
         ctx.fillStyle = it.color;
-        ctx.fillText(it.text, it.x, y);
+        ctx.fillText(it.text, textX, y);
       }
       ctx.globalAlpha = 1;
       ctx.textAlign = 'start';
