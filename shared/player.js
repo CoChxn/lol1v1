@@ -1,5 +1,5 @@
 // 플레이어 데이터 생성. 능력치는 챔피언 데이터에서 가져온다.
-import { getChampion, DEFAULT_CHAMPION } from './champions.js';
+import { getChampion, DEFAULT_CHAMPION } from './champions/index.js';
 
 /**
  * @param {object} opts

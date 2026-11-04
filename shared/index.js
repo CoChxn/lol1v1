@@ -6,6 +6,6 @@ export * from './player.js';
 export * from './movement.js';
 export * from './effects.js';
 export * from './combat.js';
-export * from './champions.js';
+export * from './champions/index.js';
 export * from './attack.js';
 export * from './update.js';

@@ -1,6 +1,6 @@
 // 기본 공격(평타) 로직: 대상 지정 → 사거리까지 추격 → 준비 동작 → 투사체 발사 → 적중.
 // player·projectile은 update에서 복사한 객체라 직접 바꿔도 된다.
-import { getChampion } from './champions.js';
+import { getChampion } from './champions/index.js';
 import { setMoveTarget } from './movement.js';
 import { applyDamage } from './combat.js';
 
