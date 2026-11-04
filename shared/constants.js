@@ -8,3 +8,9 @@ export const TICK_DT = 1 / TICK_RATE;
 // 아레나 크기(월드 픽셀)
 export const MAP_WIDTH = 2400;
 export const MAP_HEIGHT = 1400;
+
+// 진영별 시작(부활) 지점
+export const SPAWN_POINTS = {
+  blue: { x: 250, y: MAP_HEIGHT / 2 },
+  red: { x: MAP_WIDTH - 250, y: MAP_HEIGHT / 2 },
+};
