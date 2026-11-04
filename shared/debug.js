@@ -6,6 +6,7 @@ import { applyDamage, spendMana, restoreFull } from './combat.js';
 import { clampToMap } from './movement.js';
 import { cancelAttack } from './attack.js';
 import { DUMMY_MODES } from './dummyAI.js';
+import { SKILL_MAX_LEVEL } from './champions/validate.js';
 
 // 바꿀 수 있는 스탯과 허용 범위
 export const DEBUG_STATS = {
@@ -14,6 +15,7 @@ export const DEBUG_STATS = {
   mana: { min: 0, max: (p) => p.maxMana },
   maxMana: { min: 0 },
   attackDamage: { min: 0 },
+  abilityPower: { min: 0 },
   baseAttackSpeed: { min: 0.2, max: () => 3.003 },
   bonusAttackSpeed: { min: -1 },
   armor: {},
@@ -24,7 +26,7 @@ export const DEBUG_STATS = {
 };
 
 // 켜고 끌 수 있는 표시
-export const DEBUG_FLAGS = ['invulnerable', 'infiniteMana'];
+export const DEBUG_FLAGS = ['invulnerable', 'infiniteMana', 'noCooldown'];
 
 // 걸 수 있는 효과 종류
 const EFFECT_KINDS = ['flat', 'percent', 'mult', 'slow', 'attackSpeed', 'critChance'];
@@ -63,6 +65,7 @@ export function applyDebugInput(players, player, input, map) {
     if (DEBUG_FLAGS.includes(input.flag)) {
       target[input.flag] = !!input.value;
       if (input.flag === 'infiniteMana' && input.value) target.mana = target.maxMana;
+      if (input.flag === 'noCooldown' && input.value) for (const k in target.skills) target.skills[k].cooldown = 0;
     }
   } else if (action === 'setDummyMode') {
     if (target.isDummy && DUMMY_MODES.includes(input.mode)) {
@@ -71,6 +74,9 @@ export function applyDebugInput(players, player, input, map) {
       cancelAttack(target);
       target.target = null;
     }
+  } else if (action === 'setSkillLevel') {
+    const st = target.skills?.[input.skill];
+    if (st && Number.isFinite(input.value)) st.level = Math.min(Math.max(Math.round(input.value), 1), SKILL_MAX_LEVEL);
   } else if (action === 'teleport') {
     if (Number.isFinite(input.x) && Number.isFinite(input.y) && map) {
       const pos = clampToMap(input.x, input.y, target.pathingRadius, map);

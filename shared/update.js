@@ -3,6 +3,7 @@ import { setMoveTarget, movePlayer, computeMoveSpeed } from './movement.js';
 import { tickEffects } from './effects.js';
 import { applyDebugInput } from './debug.js';
 import { dummyInputs } from './dummyAI.js';
+import { orderCast, tickSkillCooldowns, updateCasting, updateSkillshot } from './skills.js';
 import {
   orderAttack,
   orderAttackMove,
@@ -21,6 +22,7 @@ import {
  *   - { playerId, type: 'attack', targetId }
  *   - { playerId, type: 'attackMove', x, y }  어택땅
  *   - { playerId, type: 'stop' }  정지
+ *   - { playerId, type: 'cast', skill: 'Q', x, y }  스킬 시전 (x, y: 방향을 정하는 지점)
  * @param {number} dt  흐른 시간(초)
  * @returns {object} 다음 게임 상태
  */
@@ -28,7 +30,11 @@ export function update(state, inputs, dt) {
   // 원본을 바꾸지 않도록 복사해서 작업한다.
   const players = {};
   for (const id in state.players) {
-    players[id] = { ...state.players[id] };
+    const p = state.players[id];
+    // 안쪽 객체(스킬 상태, 시전 정보)도 복사해서 원본을 바꾸지 않는다
+    const skills = {};
+    for (const key in p.skills) skills[key] = { ...p.skills[key] };
+    players[id] = { ...p, skills, casting: p.casting && { ...p.casting } };
   }
   let projectiles = state.projectiles.map((p) => ({ ...p }));
   let nextId = state.nextId;
@@ -39,9 +45,10 @@ export function update(state, inputs, dt) {
   // 난수·이벤트 (난수 시드는 다음 상태로 이어진다)
   const ctx = { rng: { seed: state.rngSeed }, events: [] };
 
-  // 0. 지속 효과 시간 감소
+  // 0. 지속 효과·스킬 쿨타임 시간 감소
   for (const id in players) {
     tickEffects(players[id], dt);
+    tickSkillCooldowns(players[id], dt);
   }
 
   // 1. 입력 처리
@@ -64,6 +71,8 @@ export function update(state, inputs, dt) {
       orderAttackMove(player, players, input.x, input.y, state.map);
     } else if (input.type === 'stop') {
       orderStop(player);
+    } else if (input.type === 'cast') {
+      orderCast(player, input.skill, input.x, input.y);
     } else if (input.type === 'debug') {
       applyDebugInput(players, player, input, state.map);
     }
@@ -86,13 +95,21 @@ export function update(state, inputs, dt) {
     if (shot) projectiles.push({ id: nextId++, ...shot });
   }
 
+  // 2-1. 스킬 시전 진행 (시전 시간이 끝나면 발동)
+  for (const id in players) {
+    const shot = updateCasting(players[id], dt);
+    if (shot) projectiles.push({ id: nextId++, ...shot });
+  }
+
   // 3. 이동
   for (const id in players) {
     movePlayer(players[id], players, dt, state.map);
   }
 
   // 4. 투사체 이동·적중
-  projectiles = projectiles.filter((proj) => updateProjectile(proj, players, dt, ctx));
+  projectiles = projectiles.filter((proj) =>
+    proj.kind === 'skillshot' ? updateSkillshot(proj, players, dt, ctx) : updateProjectile(proj, players, dt, ctx),
+  );
 
   return {
     ...state,

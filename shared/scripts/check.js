@@ -258,7 +258,66 @@ if (!failed) {
     fail(`개발자 모드 기능: ${e.message}`);
   }
 
-  // 8. 근접 평타: 투사체 없이 즉시 적중 (검사용 임시 챔피언)
+  // 8. 스킬 (직선 투사체): 시전 조건, 마나·쿨타임, 처음 맞은 적만, 피해 공식, 적중 시 쿨타임 감소
+  for (const id in CHAMPIONS) {
+    for (const key in CHAMPIONS[id].skills ?? {}) {
+      const data = CHAMPIONS[id].skills[key];
+      if (data.type !== 'linearProjectile') continue;
+      try {
+        const cast = (s, x, y) => step(s, [{ playerId: 'a', type: 'cast', skill: key, x, y }]);
+        const firstSkillHit = (s) => {
+          for (let i = 0; i < 120; i++) {
+            s = step(s);
+            const ev = s.events.find((e) => e.type === 'damage' && e.skill === key);
+            if (ev) return { s, ev };
+            if (!s.projectiles.length && !s.players.a.casting) break;
+          }
+          return { s, ev: null };
+        };
+        // 시전: 마나 소모, 쿨타임 시작, 시전 시간 뒤 투사체 발사
+        let s = duel(id, 600);
+        const { blue } = s.map.spawns;
+        s = cast(s, blue.x + 1000, blue.y);
+        const a = s.players.a;
+        if (a.mana !== a.maxMana - data.manaCost[0]) throw new Error('마나가 소모되지 않았습니다');
+        if (!(a.skills[key].cooldown > data.cooldown[0] - 0.05)) throw new Error('쿨타임이 시작되지 않았습니다');
+        if (!a.casting || s.projectiles.length) throw new Error('시전 시간 없이 바로 발사되었습니다');
+        // 쿨타임 중 재시전 불가
+        const before = s.players.a.mana;
+        s = cast(s, blue.x + 1000, blue.y);
+        if (s.players.a.mana !== before) throw new Error('쿨타임 중에 다시 시전되었습니다');
+        // 적중: 피해 공식, 적중 시 쿨타임 감소
+        const cdBeforeHit = s.players.a.skills[key].cooldown;
+        let r = firstSkillHit(s);
+        if (!r.ev) throw new Error('앞에 있는 적을 맞히지 못했습니다');
+        const raw = data.damage[0] + s.players.a.attackDamage * data.adRatio;
+        if (Math.abs(r.ev.amount - physicalDamage(raw, s.players.b.armor)) > 1e-9) throw new Error(`피해가 공식과 다릅니다 (${r.ev.amount})`);
+        const elapsed = r.s.time - s.time;
+        const expectCd = Math.max(0, cdBeforeHit - elapsed - (data.onHitCooldownReduction ?? 0));
+        if (Math.abs(r.s.players.a.skills[key].cooldown - expectCd) > 1e-6) throw new Error(`적중 시 쿨타임 감소가 다릅니다 (${r.s.players.a.skills[key].cooldown.toFixed(3)}, 예상 ${expectCd.toFixed(3)})`);
+        // 처음 맞은 적만: 일직선에 적 둘 → 가까운 적만 피해
+        s = duel(id, 400);
+        s = addPlayer(s, createPlayer({ id: 'c', name: 'C', team: 'red', x: blue.x + 700, y: blue.y, championId: id, isDummy: true }));
+        r = firstSkillHit(cast(s, blue.x + 1000, blue.y));
+        for (let i = 0; i < 30; i++) r.s = step(r.s);
+        if (r.s.players.b.hp === r.s.players.b.maxHp || r.s.players.c.hp !== r.s.players.c.maxHp) throw new Error('처음 맞은 적 하나만 맞아야 합니다');
+        // 사거리 밖 적은 맞지 않고 투사체가 사라진다
+        s = duel(id, data.range + 300);
+        r = firstSkillHit(cast(s, blue.x + 5000, blue.y));
+        if (r.ev || r.s.projectiles.length) throw new Error('사거리 밖의 적을 맞혔거나 투사체가 사라지지 않았습니다');
+        // 마나 부족이면 시전 불가
+        s = duel(id);
+        s = { ...s, players: { ...s.players, a: { ...s.players.a, mana: data.manaCost[0] - 1 } } };
+        s = cast(s, blue.x + 1000, blue.y);
+        if (s.players.a.casting) throw new Error('마나가 부족한데 시전되었습니다');
+        console.log(`✓ ${id} ${key} ${data.name} (마나·쿨타임, 시전 시간, 피해 ${r.ev ? '' : ''}공식, 적중 시 쿨타임 -${data.onHitCooldownReduction ?? 0}초, 첫 적중만, 사거리, 마나 부족)`);
+      } catch (e) {
+        fail(`${id} ${key} 스킬: ${e.message}`);
+      }
+    }
+  }
+
+  // 9. 근접 평타: 투사체 없이 즉시 적중 (검사용 임시 챔피언)
   try {
     const base = CHAMPIONS[Object.keys(CHAMPIONS)[0]];
     CHAMPIONS.__melee = { ...base, attack: { type: 'melee', range: 125, damage: 10, attackSpeed: 1, windupRatio: 0.25 } };

@@ -67,7 +67,7 @@ const SIDESTEP = 0.35;
  * - 다른 캐릭터와 겹치면 밖으로 밀려나 가장자리를 따라 미끄러진다.
  */
 export function movePlayer(player, players, dt, map) {
-  if (!player.target) return;
+  if (!player.target || player.casting) return;
 
   const dx = player.target.x - player.x;
   const dy = player.target.y - player.y;

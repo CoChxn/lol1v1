@@ -8,6 +8,7 @@ const FIELDS = [
   ['mana', '마나', 10, 0],
   ['maxMana', '최대 마나', 10, 0],
   ['attackDamage', '공격력 (AD)', 1, 1],
+  ['abilityPower', '주문력 (AP)', 1, 1],
   ['baseAttackSpeed', '공격속도 (초당, 0.2~3.003)', 0.05, 3],
   ['armor', '방어력', 1, 1],
   ['critChance', '치명타 확률 (0~1)', 0.05, 2],
@@ -165,6 +166,7 @@ export function createStatPanel({ getState, myId, onInput, timeControl, onReset 
   const flagButtons = [
     ['invulnerable', '무적'],
     ['infiniteMana', '무한 마나'],
+    ['noCooldown', '쿨타임 없음'],
   ].map(([flag, label]) => {
     const b = document.createElement('button');
     b.onclick = () => {
@@ -174,6 +176,46 @@ export function createStatPanel({ getState, myId, onInput, timeControl, onReset 
     flagGrid.appendChild(b);
     return [flag, label, b];
   });
+
+  // 스킬 레벨 (선택한 대상)
+  const skillTitle = document.createElement('h3');
+  skillTitle.textContent = '스킬 레벨 (1~5)';
+  const skillBox = document.createElement('div');
+  const skillInputs = {};
+  for (const key of ['Q', 'W', 'E', 'R']) {
+    const row = document.createElement('label');
+    const name = document.createElement('span');
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.min = '1';
+    input.max = '5';
+    input.step = '1';
+    const apply = () => {
+      const value = Number(input.value);
+      if (input.value.trim() !== '' && Number.isFinite(value)) send({ action: 'setSkillLevel', skill: key, value });
+    };
+    input.addEventListener('change', apply);
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        apply();
+        input.blur();
+      }
+    });
+    row.append(name, input);
+    skillBox.appendChild(row);
+    skillInputs[key] = { row, name, input };
+  }
+  function refreshSkills() {
+    const p = getState().players[targetId];
+    for (const key in skillInputs) {
+      const { row, name, input } = skillInputs[key];
+      const st = p?.skills?.[key];
+      row.style.display = st ? 'flex' : 'none';
+      if (!st) continue;
+      name.textContent = `${key} 레벨`;
+      if (document.activeElement !== input && input.value !== String(st.level)) input.value = String(st.level);
+    }
+  }
 
   // 허수아비 행동
   const dummyTitle = document.createElement('h3');
@@ -215,7 +257,7 @@ export function createStatPanel({ getState, myId, onInput, timeControl, onReset 
     for (const [m, b] of dummyButtons) b.classList.toggle('on', m === mode);
   }
 
-  root.append(timeTitle, timeRow, speedRow, tabs, statsTitle, statsBox, effectTitle, grid, flagTitle, flagGrid, dummyTitle, dummyRow, resetBtn, hint);
+  root.append(timeTitle, timeRow, speedRow, tabs, statsTitle, statsBox, effectTitle, grid, skillTitle, skillBox, flagTitle, flagGrid, dummyTitle, dummyRow, resetBtn, hint);
   refreshTabs();
 
   // 입력 중이 아닌 칸은 현재 값으로 계속 갱신
@@ -238,6 +280,7 @@ export function createStatPanel({ getState, myId, onInput, timeControl, onReset 
       if (!devMode) return;
       refreshTime();
       refreshCheats();
+      refreshSkills();
       const now = performance.now();
       if (now - lastRefresh > 100) {
         refreshValues();

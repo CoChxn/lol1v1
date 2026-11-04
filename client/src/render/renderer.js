@@ -6,6 +6,8 @@ import { createClickMarker } from './clickMarker.js';
 import { drawProjectiles } from './projectiles.js';
 import { drawRangeRing } from './rangeRing.js';
 import { createDamageNumbers } from './damageNumbers.js';
+import { drawSkillIndicator } from './skillIndicator.js';
+import { drawSkillBar } from './skillBar.js';
 import { drawDebugOverlays, drawOverlayLegend } from './debug/overlays.js';
 import { drawInfoPanel, drawModeBadge, drawTimeBanner } from './debug/infoPanel.js';
 import { createCombatLog } from './debug/combatLog.js';
@@ -35,7 +37,7 @@ export function createRenderer(canvas) {
    * @param {object} state  현재 틱 상태
    * @param {number} alpha  두 틱 사이 진행 비율(0~1)
    * @param {string} myId  내 플레이어 ID (카메라가 따라감)
-   * @param {object} [ui]  화면 상태 { attackMoveMode, devMode, time: { paused, scale } }
+   * @param {object} [ui]  화면 상태 { attackMoveMode, devMode, time: { paused, scale }, aim: { skill, x, y } }
    */
   function render(prevState, state, alpha, myId, ui = {}) {
     frames++;
@@ -61,6 +63,7 @@ export function createRenderer(canvas) {
     drawArena(ctx, state.map);
     // 사거리 원: 어택땅 모드일 때 (LoL처럼)
     if (me && ui.attackMoveMode) drawRangeRing(ctx, me, focus.x, focus.y, true);
+    if (me && ui.aim) drawSkillIndicator(ctx, me, focus.x, focus.y, ui.aim);
     clickMarker.draw(ctx);
     drawPlayers(ctx, prevState, state, alpha, myId);
     if (ui.devMode) drawDebugOverlays(ctx, prevState, state, alpha);
@@ -69,6 +72,7 @@ export function createRenderer(canvas) {
 
     // 화면 고정 UI
     ctx.setTransform(1, 0, 0, 1, 0, 0);
+    if (me) drawSkillBar(ctx, canvas.width, canvas.height, me);
     if (ui.devMode) {
       drawInfoPanel(ctx, state, myId, { fps, combatLog });
       drawOverlayLegend(ctx, canvas.width, canvas.height);

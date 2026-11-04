@@ -66,3 +66,15 @@ export function dealAttackDamage(attacker, target, hit, ctx) {
   ctx.events.push({ type: 'damage', targetId: target.id, sourceId: attacker?.id ?? null, raw, amount, crit: hit.crit });
   for (const effect of ON_HIT_EFFECTS) effect(attacker, target, ctx);
 }
+
+/**
+ * 스킬 피해 (물리, 치명타 없음)
+ * @param {object|undefined} attacker
+ * @param {object} target
+ * @param {number} raw  방어력 적용 전 피해
+ * @param {string} skill  스킬 키 (예: 'Q')
+ */
+export function dealSkillDamage(attacker, target, raw, skill, ctx) {
+  const amount = applyDamage(target, physicalDamage(raw, target.armor));
+  ctx.events.push({ type: 'damage', targetId: target.id, sourceId: attacker?.id ?? null, raw, amount, crit: false, skill });
+}

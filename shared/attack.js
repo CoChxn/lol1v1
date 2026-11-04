@@ -165,7 +165,7 @@ export function updateAttackMove(player, players, map) {
  * - 이번 틱에 발사될 평타(남은 선딜레이 ≤ 1틱)는 취소되지 않는다.
  * - force: 공격자·대상 사망 등 반드시 끊어야 할 때
  */
-function cancelWindup(player, force = false) {
+export function cancelWindup(player, force = false) {
   if (player.attackWindup === null) return;
   if (!force && player.attackWindup <= TICK_DT + EPSILON) return;
   player.attackWindup = null;
@@ -201,6 +201,12 @@ export function updateAttack(player, players, map, dt, ctx) {
   // 평타 명령 대상이 공격 불가가 되면 명령 해제
   if (player.attackTargetId && !canAttack(player, players[player.attackTargetId])) {
     player.attackTargetId = null;
+  }
+
+  // 스킬 시전 중에는 평타를 진행하지 않는다 (명령은 유지 → 시전이 끝나면 이어서)
+  if (player.casting) {
+    player.attackState = getAttackState(player, players, atk);
+    return null;
   }
 
   // 1. 선딜레이 중이 아니면: 추적하거나 새 평타 시작
@@ -247,6 +253,7 @@ export function updateAttack(player, players, map, dt, ctx) {
           dealAttackDamage(player, target, hit, ctx); // 근접: 즉시 적중
         } else {
           shot = {
+            kind: 'attack',
             ownerId: player.id,
             targetId: target.id,
             x: player.x,

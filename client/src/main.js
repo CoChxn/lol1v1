@@ -105,7 +105,7 @@ startLoop({
   },
   render(alpha) {
     statPanel.update(devMode.isEnabled());
-    renderer.render(prevState, state, alpha, MY_ID, { attackMoveMode: inputControl.isAttackMoveMode(), devMode: devMode.isEnabled(), time: timeControl.status() });
+    renderer.render(prevState, state, alpha, MY_ID, { attackMoveMode: inputControl.isAttackMoveMode(), devMode: devMode.isEnabled(), time: timeControl.status(), aim: inputControl.getAim() });
   },
 });
 

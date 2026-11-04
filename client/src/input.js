@@ -4,6 +4,7 @@
 // - A: 어택땅 모드 → 좌클릭: 적 위면 평타, 땅이면 어택땅(attackMove)
 //      우클릭·Esc로 모드 취소 (우클릭은 원래 동작도 한다)
 // - S: 정지(stop)
+// - Q/W/E/R: 누르고 있으면 범위 표시, 키를 떼거나 좌클릭하면 마우스 방향으로 시전(cast). 우클릭·Esc로 취소
 
 /**
  * @param {HTMLCanvasElement} canvas
@@ -13,12 +14,24 @@
  * @param {(input: object) => void} opts.onInput  만들어진 입력 전달
  * @param {() => number|undefined} [opts.getDummyArmor]  [테스트용] 허수아비의 현재 방어력
  * @param {() => boolean} [opts.isDevMode]  개발자 모드 여부 (테스트 키는 개발자 모드에서만 동작)
- * @returns {{ isAttackMoveMode: () => boolean }}
+ * @returns {{ isAttackMoveMode: () => boolean, getAim: () => ({ skill: string, x: number, y: number } | null) }}
  */
 export function setupInput(canvas, { screenToWorld, pickEnemy, onInput, getDummyArmor = () => 0, isDevMode = () => false }) {
   let rightHeld = false;
   let attackMoveMode = false;
   let lastMouse = null;
+  let aimingSkill = null; // 범위 표시 중인 스킬 키
+  const SKILL_KEYS = ['q', 'w', 'e', 'r'];
+
+  function castAimed() {
+    if (!aimingSkill || !lastMouse) {
+      aimingSkill = null;
+      return;
+    }
+    const { x, y } = screenToWorld(lastMouse.x, lastMouse.y);
+    onInput({ type: 'cast', skill: aimingSkill, x, y });
+    aimingSkill = null;
+  }
 
   function updateCursor() {
     if (attackMoveMode) {
@@ -53,12 +66,16 @@ export function setupInput(canvas, { screenToWorld, pickEnemy, onInput, getDummy
   canvas.addEventListener('mousedown', (e) => {
     if (e.button === 2) {
       attackMoveMode = false;
+      aimingSkill = null; // 우클릭: 스킬 조준 취소
       rightHeld = true;
       sendRightClick(e);
     } else if (e.button === 0 && isDevMode() && (e.ctrlKey || e.shiftKey)) {
       // [개발자 모드] Ctrl+좌클릭: 허수아비 순간이동 / Shift+좌클릭: 내 캐릭터 순간이동
       const { x, y } = screenToWorld(e.clientX, e.clientY);
       onInput({ type: 'debug', action: 'teleport', targetId: e.ctrlKey ? 'dummy' : undefined, x, y });
+    } else if (e.button === 0 && aimingSkill) {
+      lastMouse = { x: e.clientX, y: e.clientY };
+      castAimed();
     } else if (e.button === 0 && attackMoveMode) {
       attackMoveMode = false;
       sendAttackMove(e);
@@ -79,6 +96,7 @@ export function setupInput(canvas, { screenToWorld, pickEnemy, onInput, getDummy
   window.addEventListener('blur', () => {
     rightHeld = false;
     attackMoveMode = false;
+    aimingSkill = null;
   });
 
   // [개발자 모드] 숫자 테스트 키
@@ -90,10 +108,14 @@ export function setupInput(canvas, { screenToWorld, pickEnemy, onInput, getDummy
     const tag = e.target?.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
     const key = e.key.toLowerCase();
-    if (key === 'a') {
+    if (SKILL_KEYS.includes(key)) {
+      attackMoveMode = false;
+      aimingSkill = key.toUpperCase();
+    } else if (key === 'a') {
       attackMoveMode = true;
     } else if (key === 'escape') {
       attackMoveMode = false;
+      aimingSkill = null;
     } else if (key === 's') {
       attackMoveMode = false;
       onInput({ type: 'stop' });
@@ -112,5 +134,17 @@ export function setupInput(canvas, { screenToWorld, pickEnemy, onInput, getDummy
     updateCursor();
   });
 
-  return { isAttackMoveMode: () => attackMoveMode };
+  // 스킬 키를 떼면 시전
+  window.addEventListener('keyup', (e) => {
+    const key = e.key.toLowerCase();
+    if (aimingSkill && key === aimingSkill.toLowerCase()) castAimed();
+  });
+
+  return {
+    isAttackMoveMode: () => attackMoveMode,
+    getAim() {
+      if (!aimingSkill || !lastMouse) return null;
+      return { skill: aimingSkill, ...screenToWorld(lastMouse.x, lastMouse.y) };
+    },
+  };
 }

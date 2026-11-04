@@ -8,7 +8,29 @@ export function drawProjectiles(ctx, prevState, state, alpha) {
     const x = prev ? prev.x + (proj.x - prev.x) * alpha : proj.x;
     const y = prev ? prev.y + (proj.y - prev.y) * alpha : proj.y;
     const owner = state.players[proj.ownerId];
-    const color = owner?.team === 'red' ? '255, 120, 90' : '120, 200, 255';
+    const team = proj.team ?? owner?.team;
+    const color = team === 'red' ? '255, 120, 90' : '120, 200, 255';
+
+    if (proj.kind === 'skillshot') {
+      // 직선 투사체: 진행 방향으로 길쭉한 빛 화살
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(Math.atan2(proj.dirY, proj.dirX));
+      ctx.fillStyle = `rgba(${color}, 0.25)`;
+      ctx.beginPath();
+      ctx.ellipse(-proj.radius, 0, proj.radius * 2.6, proj.radius, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = `rgba(${color}, 0.9)`;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, proj.radius * 1.4, proj.radius * 0.45, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.beginPath();
+      ctx.ellipse(proj.radius * 0.4, 0, proj.radius * 0.6, proj.radius * 0.2, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+      continue;
+    }
 
     // 빛 번짐
     ctx.fillStyle = `rgba(${color}, 0.3)`;

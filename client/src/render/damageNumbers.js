@@ -14,6 +14,7 @@ export function createDamageNumbers() {
         y: pos.y,
         text: String(Math.round(event.amount)),
         crit: event.crit,
+        skill: !!event.skill,
         start: performance.now(),
       });
     },
@@ -31,7 +32,7 @@ export function createDamageNumbers() {
         ctx.strokeStyle = 'rgba(0, 0, 0, 0.8)';
         const y = it.y - RISE * t;
         ctx.strokeText(it.text, it.x, y);
-        ctx.fillStyle = it.crit ? '#ff9a2e' : '#ffffff';
+        ctx.fillStyle = it.crit ? '#ff9a2e' : it.skill ? '#ffd84a' : '#ffffff';
         ctx.fillText(it.text, it.x, y);
       }
       ctx.globalAlpha = 1;

@@ -10,5 +10,6 @@ export * from './champions/index.js';
 export * from './attack.js';
 export * from './damage.js';
 export * from './debug.js';
+export * from './skills.js';
 export * from './dummyAI.js';
 export * from './update.js';
