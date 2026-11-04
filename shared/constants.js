@@ -2,3 +2,9 @@
 
 // 서버 게임 로직 실행 횟수(초당)
 export const TICK_RATE = 30;
+// 로직 한 번에 흐르는 시간(초)
+export const TICK_DT = 1 / TICK_RATE;
+
+// 아레나 크기(월드 픽셀)
+export const MAP_WIDTH = 2400;
+export const MAP_HEIGHT = 1400;
