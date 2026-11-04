@@ -20,6 +20,9 @@ export function update(state, inputs, dt) {
   }
   let projectiles = state.projectiles.map((p) => ({ ...p }));
   let nextId = state.nextId;
+  // 발사 직후라 처리하지 못하고 미뤄 둔 명령을 먼저 처리한다
+  const allInputs = [...state.deferredInputs, ...inputs];
+  const deferredInputs = [];
 
   // 0. 지속 효과 시간 감소
   for (const id in players) {
@@ -27,9 +30,15 @@ export function update(state, inputs, dt) {
   }
 
   // 1. 입력 처리
-  for (const input of inputs) {
+  for (const input of allInputs) {
     const player = players[input.playerId];
     if (!player) continue;
+
+    // 발사 직후 1틱은 새 명령을 받지 않고 다음 틱으로 미룬다 (테스트용 입력은 제외)
+    if (player.commandLockTicks > 0 && input.type !== 'debug') {
+      deferredInputs.push(input);
+      continue;
+    }
 
     if (input.type === 'move') {
       cancelAttack(player);
@@ -39,6 +48,10 @@ export function update(state, inputs, dt) {
     } else if (input.type === 'debug') {
       applyDebugInput(players, player, input.action);
     }
+  }
+
+  for (const id in players) {
+    if (players[id].commandLockTicks > 0) players[id].commandLockTicks--;
   }
 
   // 최종 이동속도·총 공격속도 계산 (이번 틱 이동·평타에 사용)
@@ -68,6 +81,7 @@ export function update(state, inputs, dt) {
     players,
     projectiles,
     nextId,
+    deferredInputs,
   };
 }
 

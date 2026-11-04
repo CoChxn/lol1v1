@@ -31,16 +31,22 @@ const canvas = document.getElementById('game');
 const renderer = createRenderer(canvas);
 
 // --- 입력 ---
-// 클릭한 지점에 있는 적 찾기 (판정 여유 10픽셀). 실제로 공격 가능한지는 shared 로직이 다시 확인한다.
-const PICK_TOLERANCE = 10;
+// 클릭한 지점의 적 찾기: 선택 반경(selectionRadius) 안에 있는 적 중 마우스에 가장 가까운 적.
+// (클릭은 넉넉하게 선택 반경, 공격 판정은 정확하게 게임플레이 반경. 실제 공격 가능 여부는 shared 로직이 다시 확인한다)
 function pickEnemy(wx, wy) {
   const me = state.players[MY_ID];
+  let best = null;
+  let bestDist = Infinity;
   for (const id in state.players) {
     const p = state.players[id];
-    if (p.team === me.team || p.hp <= 0) continue;
-    if (Math.hypot(p.x - wx, p.y - wy) <= p.gameplayRadius + PICK_TOLERANCE) return id;
+    if (p.team === me.team || p.hp <= 0 || p.targetable === false) continue;
+    const d = Math.hypot(p.x - wx, p.y - wy);
+    if (d <= p.selectionRadius && d < bestDist) {
+      best = id;
+      bestDist = d;
+    }
   }
-  return null;
+  return best;
 }
 
 setupInput(canvas, {

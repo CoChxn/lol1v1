@@ -72,9 +72,8 @@ export function createRenderer(canvas) {
       ctx.fillText(`move speed ${me.moveSpeed.toFixed(1)} (base ${me.baseMoveSpeed})  ${effects}`, 10, 120);
       const atk = getChampion(me.championId).attack;
       const T = 1 / me.attackSpeed;
-      const phase = me.attackWindup !== null ? 'windup' : me.attackTimer > 0 ? 'cooldown' : 'ready';
       ctx.fillText(
-        `attack speed ${me.attackSpeed.toFixed(3)}  T ${T.toFixed(3)}s  W ${computeWindup(atk, me.attackSpeed).toFixed(3)}s  [${phase}]`,
+        `attack speed ${me.attackSpeed.toFixed(3)}  T ${T.toFixed(3)}s  W ${computeWindup(atk, me.attackSpeed).toFixed(3)}s  [${me.attackState}]`,
         10,
         140,
       );

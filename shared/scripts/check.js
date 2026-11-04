@@ -70,9 +70,64 @@ if (!failed) {
     } catch (e) {
       fail(`${id} 평타 타이머: ${e.message}`);
     }
+
+    // 4. 평타 상태·취소 조건·틱 타이밍 규칙
+    try {
+      const moveAway = { playerId: 'a', type: 'move', x: 100, y: 100 };
+      const setPos = (s, pid, dx) => ({ ...s, players: { ...s.players, [pid]: { ...s.players[pid], x: s.players[pid].x + dx } } });
+      const withPlayer = (s, pid, patch) => ({ ...s, players: { ...s.players, [pid]: { ...s.players[pid], ...patch } } });
+
+      // 상태 순서: chase → windup → cooldown
+      let s = step(duel(id, 1100), [attackB]);
+      const seen = [s.players.a.attackState];
+      for (let i = 0; i < 30 * 6; i++) {
+        s = step(s);
+        if (seen.at(-1) !== s.players.a.attackState) seen.push(s.players.a.attackState);
+      }
+      if (seen.slice(0, 3).join('>') !== 'chase>windup>cooldown') throw new Error(`상태 순서가 다릅니다: ${seen.join(' > ')}`);
+
+      // 선딜레이 마지막 1틱은 이동 명령으로 취소되지 않는다
+      s = step(duel(id), [attackB]);
+      while (s.players.a.attackWindup > TICK_DT + 1e-6) s = step(s);
+      const before = s.projectiles.length + (s.players.b.hp < s.players.b.maxHp ? 1 : 0);
+      s = step(s, [moveAway]);
+      const after = s.projectiles.length + (s.players.b.hp < s.players.b.maxHp ? 1 : 0);
+      if (after <= before) throw new Error('선딜레이 마지막 틱에 이동했더니 평타가 취소되었습니다');
+
+      // 발사 직후 1틱 동안의 명령은 다음 틱으로 미뤄진다
+      // 발사 틱에 들어온 이동 명령은 잠금 전에 처리되므로 미뤄지지 않고 바로 이동 목표가 된다
+      if (s.deferredInputs.length !== 0 || s.players.a.target === null) throw new Error('발사 틱의 이동 명령이 처리되지 않았습니다');
+      s = step(duel(id), [attackB]);
+      while (s.players.a.attackWindup !== null) s = step(s);
+      s = step(s, [moveAway]); // 발사 다음 틱
+      if (s.players.a.target !== null || s.deferredInputs.length !== 1) throw new Error('발사 직후 틱의 명령이 미뤄지지 않았습니다');
+      s = step(s);
+      if (s.players.a.target === null) throw new Error('미뤄진 명령이 다음 틱에 처리되지 않았습니다');
+
+      // 대상이 조금 멀어지면(여유 거리 안) 선딜레이 유지, 많이 멀어지면 취소
+      s = step(duel(id), [attackB]);
+      const range = CHAMPIONS[id].attack.range;
+      const gap = s.players.b.x - s.players.a.x - s.players.a.gameplayRadius - s.players.b.gameplayRadius;
+      let t = setPos(s, 'b', range - gap + 50);
+      t = step(t);
+      if (t.players.a.attackWindup === null && t.players.a.attackState !== 'cooldown') throw new Error('여유 거리 안인데 선딜레이가 취소되었습니다');
+      t = setPos(step(duel(id), [attackB]), 'b', range - gap + 200);
+      t = step(t);
+      if (t.players.a.attackWindup !== null || t.players.a.attackTimer !== 0) throw new Error('대상이 너무 멀어졌는데 선딜레이가 유지되었습니다');
+      if (t.players.a.attackState !== 'chase') throw new Error('평타가 끊긴 뒤 다시 추적하지 않았습니다');
+
+      // 대상이 타겟 불가가 되면 선딜레이와 명령이 끊긴다
+      t = withPlayer(step(duel(id), [attackB]), 'b', { targetable: false });
+      t = step(t);
+      if (t.players.a.attackWindup !== null || t.players.a.attackTargetId !== null) throw new Error('타겟 불가 대상에게 평타가 계속되었습니다');
+
+      console.log(`✓ ${id} 평타 상태·취소·틱 규칙 (chase>windup>cooldown, 마지막 틱 취소 불가, 발사 후 명령 지연, 여유 거리, 타겟 불가)`);
+    } catch (e) {
+      fail(`${id} 평타 상태·취소·틱 규칙: ${e.message}`);
+    }
   }
 
-  // 4. 근접 평타: 투사체 없이 즉시 적중 (검사용 임시 챔피언)
+  // 5. 근접 평타: 투사체 없이 즉시 적중 (검사용 임시 챔피언)
   try {
     const base = CHAMPIONS[Object.keys(CHAMPIONS)[0]];
     CHAMPIONS.__melee = { ...base, attack: { type: 'melee', range: 125, damage: 10, attackSpeed: 1, windupRatio: 0.25 } };
