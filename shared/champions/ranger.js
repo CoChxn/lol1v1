@@ -31,5 +31,5 @@ export default {
   // 방어·치명타
   armor: 24,
   critChance: 0,
-  critDamage: 1.75,
+  critDamage: 2,
 };
