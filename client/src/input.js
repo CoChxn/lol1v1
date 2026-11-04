@@ -34,4 +34,12 @@ export function setupInput(canvas, { screenToWorld, onInput }) {
   window.addEventListener('blur', () => {
     rightHeld = false;
   });
+
+  // [테스트용] 숫자 키로 체력·마나 변경 (Phase 3 이후 제거 예정)
+  const DEBUG_KEYS = { 1: 'damage', 2: 'spendMana', 3: 'restore' };
+  window.addEventListener('keydown', (e) => {
+    if (e.repeat) return;
+    const action = DEBUG_KEYS[e.key];
+    if (action) onInput({ type: 'debug', action });
+  });
 }

@@ -1,5 +1,6 @@
 // 게임 로직 한 틱. 순수 함수: 입력 상태를 바꾸지 않고 새 상태를 돌려준다.
 import { setMoveTarget, movePlayer } from './movement.js';
+import { applyDamage, spendMana, restoreFull } from './combat.js';
 
 /**
  * @param {object} state  현재 게임 상태
@@ -20,6 +21,8 @@ export function update(state, inputs, dt) {
 
     if (input.type === 'move') {
       setMoveTarget(player, input.x, input.y, state.map);
+    } else if (input.type === 'debug') {
+      applyDebugInput(player, input.action);
     }
   }
 
@@ -33,4 +36,11 @@ export function update(state, inputs, dt) {
     tick: state.tick + 1,
     players,
   };
+}
+
+// 테스트용 입력 (Phase 4에서 서버는 개발 모드일 때만 허용한다)
+function applyDebugInput(player, action) {
+  if (action === 'damage') applyDamage(player, 100);
+  else if (action === 'spendMana') spendMana(player, 50);
+  else if (action === 'restore') restoreFull(player);
 }

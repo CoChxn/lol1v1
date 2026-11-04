@@ -1,5 +1,5 @@
 // 플레이어 데이터 생성.
-import { PLAYER_RADIUS, DEFAULT_MOVE_SPEED } from './constants.js';
+import { PLAYER_RADIUS, DEFAULT_MOVE_SPEED, DEFAULT_MAX_HP, DEFAULT_MAX_MANA } from './constants.js';
 
 /**
  * @param {object} opts
@@ -18,6 +18,10 @@ export function createPlayer({ id, name, team, x, y }) {
     y,
     radius: PLAYER_RADIUS,
     moveSpeed: DEFAULT_MOVE_SPEED,
+    hp: DEFAULT_MAX_HP,
+    maxHp: DEFAULT_MAX_HP,
+    mana: DEFAULT_MAX_MANA,
+    maxMana: DEFAULT_MAX_MANA,
     // 이동 목표 지점. null이면 정지.
     target: null,
   };

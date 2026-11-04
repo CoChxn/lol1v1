@@ -58,7 +58,11 @@ export function createRenderer(canvas) {
     ctx.fillStyle = '#8f8';
     ctx.font = '14px monospace';
     ctx.fillText(`tick ${state.tick}  time ${state.time.toFixed(1)}s  fps ${fps}`, 10, 20);
-    if (me) ctx.fillText(`pos ${me.x.toFixed(0)}, ${me.y.toFixed(0)}  ${me.target ? 'moving' : 'idle'}`, 10, 40);
+    if (me) {
+      ctx.fillText(`pos ${me.x.toFixed(0)}, ${me.y.toFixed(0)}  ${me.target ? 'moving' : 'idle'}`, 10, 40);
+      ctx.fillText(`hp ${me.hp}/${me.maxHp}  mana ${me.mana}/${me.maxMana}`, 10, 60);
+      ctx.fillText('[테스트] 1: 체력-100  2: 마나-50  3: 전부 회복', 10, 80);
+    }
   }
 
   return { render, camera, clickMarker };

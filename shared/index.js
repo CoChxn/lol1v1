@@ -4,4 +4,5 @@ export * from './constants.js';
 export * from './state.js';
 export * from './player.js';
 export * from './movement.js';
+export * from './combat.js';
 export * from './update.js';
