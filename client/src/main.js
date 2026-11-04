@@ -1,12 +1,14 @@
 // 클라이언트 진입점: 렌더링, 입력 수집, 서버 통신을 담당한다.
 import { io } from 'socket.io-client';
-import { TICK_DT, createGameState, createPlayer, addPlayer, update } from '@lol1v1/shared';
+import { TICK_DT, createGameState, createPlayer, addPlayer, update, getSkillData } from '@lol1v1/shared';
 import { startLoop } from './game/loop.js';
 import { createRenderer } from './render/renderer.js';
 import { setupInput } from './input.js';
 import { createDevMode } from './dev/devMode.js';
 import { createStatPanel } from './dev/statPanel.js';
 import { createTimeControl } from './dev/timeControl.js';
+import { createSettings } from './ui/settings.js';
+import { createSettingsPanel } from './ui/settingsPanel.js';
 
 // --- 서버 연결 ---
 const socket = io();
@@ -40,6 +42,17 @@ const canvas = document.getElementById('game');
 const renderer = createRenderer(canvas);
 const devMode = createDevMode();
 const timeControl = createTimeControl(devMode.isEnabled);
+const settings = createSettings();
+createSettingsPanel(settings);
+
+// 스킬 키의 실제 입력 방식: 설정값. 단, 지정할 대상이 없는 스킬(자동·자기·근접 조준)은 항상 빠른 시전
+const ALWAYS_QUICK_TARGETING = ['auto', 'self', 'proximity'];
+function getCastMode(skill) {
+  const me = state.players[MY_ID];
+  const data = me && getSkillData(me, skill);
+  if (data && ALWAYS_QUICK_TARGETING.includes(data.targeting.type)) return 'quick';
+  return settings.getCastMode(skill);
+}
 
 // --- 입력 ---
 // 클릭한 지점의 적 찾기: 선택 반경(selectionRadius) 안에 있는 적 중 마우스에 가장 가까운 적.
@@ -77,6 +90,7 @@ const inputControl = setupInput(canvas, {
   pickEnemy,
   getDummyArmor: () => state.players.dummy?.armor,
   isDevMode: devMode.isEnabled,
+  getCastMode,
   onInput(input) {
     sendInput(input);
     if (input.type === 'move') renderer.clickMarker.show(input.x, input.y);

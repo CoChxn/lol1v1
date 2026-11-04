@@ -4,7 +4,11 @@
 // - A: 어택땅 모드 → 좌클릭: 적 위면 평타, 땅이면 어택땅(attackMove)
 //      우클릭·Esc로 모드 취소 (우클릭은 원래 동작도 한다)
 // - S: 정지(stop)
-// - Q/W/E/R: 누르고 있으면 범위 표시, 키를 떼거나 좌클릭하면 마우스 방향으로 시전(cast). 우클릭·Esc로 취소
+// - Q/W/E/R: 스킬 시전(cast). 키별 입력 방식(getCastMode)에 따라
+//     normal         키를 누르면 범위 표시 → 좌클릭으로 시전
+//     quick          키를 누르는 순간 커서 방향으로 시전 (범위 표시 없음)
+//     quickIndicator 누르는 동안 범위 표시 → 키를 떼면(또는 좌클릭하면) 시전
+//   조준 취소: 우클릭, Esc, A, S
 
 /**
  * @param {HTMLCanvasElement} canvas
@@ -14,23 +18,48 @@
  * @param {(input: object) => void} opts.onInput  만들어진 입력 전달
  * @param {() => number|undefined} [opts.getDummyArmor]  [테스트용] 허수아비의 현재 방어력
  * @param {() => boolean} [opts.isDevMode]  개발자 모드 여부 (테스트 키는 개발자 모드에서만 동작)
+ * @param {(skill: string) => string} [opts.getCastMode]  스킬 키의 입력 방식 ('normal' | 'quick' | 'quickIndicator')
  * @returns {{ isAttackMoveMode: () => boolean, getAim: () => ({ skill: string, x: number, y: number } | null) }}
  */
-export function setupInput(canvas, { screenToWorld, pickEnemy, onInput, getDummyArmor = () => 0, isDevMode = () => false }) {
+export function setupInput(
+  canvas,
+  { screenToWorld, pickEnemy, onInput, getDummyArmor = () => 0, isDevMode = () => false, getCastMode = () => 'quickIndicator' },
+) {
   let rightHeld = false;
   let attackMoveMode = false;
   let lastMouse = null;
   let aimingSkill = null; // 범위 표시 중인 스킬 키
+  let aimingMode = null; // 조준 중인 스킬의 입력 방식
   const SKILL_KEYS = ['q', 'w', 'e', 'r'];
 
+  // 조준 중인 스킬을 지금 커서 위치로 시전
   function castAimed() {
-    if (!aimingSkill || !lastMouse) {
-      aimingSkill = null;
+    if (aimingSkill && lastMouse) {
+      const { x, y } = screenToWorld(lastMouse.x, lastMouse.y);
+      onInput({ type: 'cast', skill: aimingSkill, x, y });
+    }
+    cancelAim();
+  }
+
+  function cancelAim() {
+    aimingSkill = null;
+    aimingMode = null;
+  }
+
+  // 스킬 키를 눌렀을 때
+  function pressSkill(skill) {
+    attackMoveMode = false;
+    const mode = getCastMode(skill);
+    if (mode === 'quick') {
+      // 빠른 시전: 누르는 즉시 커서 방향으로
+      cancelAim();
+      aimingSkill = skill;
+      castAimed();
       return;
     }
-    const { x, y } = screenToWorld(lastMouse.x, lastMouse.y);
-    onInput({ type: 'cast', skill: aimingSkill, x, y });
-    aimingSkill = null;
+    // 일반 / 표시기와 함께 빠른 시전: 범위 표시 시작 (다른 스킬 조준 중이었으면 바꾼다)
+    aimingSkill = skill;
+    aimingMode = mode;
   }
 
   function updateCursor() {
@@ -66,7 +95,7 @@ export function setupInput(canvas, { screenToWorld, pickEnemy, onInput, getDummy
   canvas.addEventListener('mousedown', (e) => {
     if (e.button === 2) {
       attackMoveMode = false;
-      aimingSkill = null; // 우클릭: 스킬 조준 취소
+      cancelAim(); // 우클릭(이동·공격 명령): 스킬 조준 취소
       rightHeld = true;
       sendRightClick(e);
     } else if (e.button === 0 && isDevMode() && (e.ctrlKey || e.shiftKey)) {
@@ -96,7 +125,7 @@ export function setupInput(canvas, { screenToWorld, pickEnemy, onInput, getDummy
   window.addEventListener('blur', () => {
     rightHeld = false;
     attackMoveMode = false;
-    aimingSkill = null;
+    cancelAim();
   });
 
   // [개발자 모드] 숫자 테스트 키
@@ -109,15 +138,16 @@ export function setupInput(canvas, { screenToWorld, pickEnemy, onInput, getDummy
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
     const key = e.key.toLowerCase();
     if (SKILL_KEYS.includes(key)) {
-      attackMoveMode = false;
-      aimingSkill = key.toUpperCase();
+      pressSkill(key.toUpperCase());
     } else if (key === 'a') {
+      cancelAim(); // 공격 명령: 스킬 조준 취소
       attackMoveMode = true;
     } else if (key === 'escape') {
       attackMoveMode = false;
-      aimingSkill = null;
+      cancelAim();
     } else if (key === 's') {
       attackMoveMode = false;
+      cancelAim();
       onInput({ type: 'stop' });
     } else if (!isDevMode()) {
       // 아래 테스트 키는 개발자 모드에서만
@@ -134,10 +164,10 @@ export function setupInput(canvas, { screenToWorld, pickEnemy, onInput, getDummy
     updateCursor();
   });
 
-  // 스킬 키를 떼면 시전
+  // 표시기와 함께 빠른 시전: 스킬 키를 떼면 시전 (일반 시전은 좌클릭을 기다린다)
   window.addEventListener('keyup', (e) => {
     const key = e.key.toLowerCase();
-    if (aimingSkill && key === aimingSkill.toLowerCase()) castAimed();
+    if (aimingSkill && aimingMode === 'quickIndicator' && key === aimingSkill.toLowerCase()) castAimed();
   });
 
   return {
