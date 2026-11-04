@@ -4,6 +4,7 @@ export * from './constants.js';
 export * from './state.js';
 export * from './player.js';
 export * from './movement.js';
+export * from './effects.js';
 export * from './combat.js';
 export * from './champions.js';
 export * from './attack.js';

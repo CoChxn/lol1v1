@@ -1,6 +1,44 @@
 // 이동 로직. 벽과 다른 캐릭터는 이동 충돌 반경(pathingRadius)으로 부딪힌다.
 // player는 update에서 복사한 객체라 직접 바꿔도 된다.
 
+/**
+ * 이동속도 상한·하한 보정 (soft cap)
+ *   490 초과        → V × 0.5 + 230
+ *   415 초과 ~ 490  → V × 0.8 + 83
+ *   220 ~ 415       → 그대로
+ *   0 ~ 220 미만    → 110 + V × 0.5
+ *   0 미만          → 110 + V × 0.01
+ */
+export function applySoftCap(v) {
+  if (v > 490) return v * 0.5 + 230;
+  if (v > 415) return v * 0.8 + 83;
+  if (v >= 220) return v;
+  if (v >= 0) return 110 + v * 0.5;
+  return 110 + v * 0.01;
+}
+
+/**
+ * 최종 이동속도 계산
+ *   V_raw = (B + F) × (1 + ΣP) × Π(1 + M_i) × (1 − S × (1 − R))
+ *   - S: 둔화 중 가장 강한 것 하나만
+ *   - R: 둔화 저항
+ * 이후 soft cap 적용.
+ */
+export function computeMoveSpeed(player) {
+  let flat = 0;
+  let percent = 0;
+  let mult = 1;
+  let slow = 0;
+  for (const e of player.effects) {
+    if (e.kind === 'flat') flat += e.value;
+    else if (e.kind === 'percent') percent += e.value;
+    else if (e.kind === 'mult') mult *= 1 + e.value;
+    else if (e.kind === 'slow') slow = Math.max(slow, e.value);
+  }
+  const raw = (player.baseMoveSpeed + flat) * (1 + percent) * mult * (1 - slow * (1 - player.slowResist));
+  return applySoftCap(raw);
+}
+
 /** 좌표를 맵 안쪽(반지름만큼 떨어진 곳)으로 제한한 값을 돌려준다. */
 export function clampToMap(x, y, radius, map) {
   return {

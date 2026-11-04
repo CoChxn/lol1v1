@@ -22,7 +22,10 @@ export function createPlayer({ id, name, team, x, y, championId = DEFAULT_CHAMPI
     y,
     gameplayRadius: champ.gameplayRadius,
     pathingRadius: champ.pathingRadius,
-    moveSpeed: champ.moveSpeed,
+    baseMoveSpeed: champ.moveSpeed, // 기본 이동속도 (B)
+    moveSpeed: champ.moveSpeed, // 최종 이동속도. 매 틱 효과를 반영해 다시 계산한다
+    slowResist: 0, // 둔화 저항 (R, 0~1)
+    effects: [], // 지속 효과 목록 (effects.js)
     hp: champ.maxHp,
     maxHp: champ.maxHp,
     mana: champ.maxMana,

@@ -67,7 +67,9 @@ export function createRenderer(canvas) {
       ctx.fillText(`hp ${me.hp}/${me.maxHp}  mana ${me.mana}/${me.maxMana}`, 10, 60);
       const dummy = state.players.dummy;
       if (dummy) ctx.fillText(`dummy hp ${dummy.hp}/${dummy.maxHp}`, 10, 100);
-      ctx.fillText('[테스트] 1: 내 체력-100  2: 내 마나-50  3: 모두 회복', 10, 80);
+      const effects = me.effects.map((e) => `${e.kind} ${e.value} (${e.remaining.toFixed(1)}s)`).join(', ');
+      ctx.fillText(`move speed ${me.moveSpeed.toFixed(1)} (base ${me.baseMoveSpeed})  ${effects}`, 10, 120);
+      ctx.fillText('[테스트] 1: 내 체력-100  2: 내 마나-50  3: 모두 회복  4: 둔화 40% 3초  5: 이속 +50% 3초', 10, 80);
     }
   }
 

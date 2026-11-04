@@ -1,5 +1,6 @@
 // 게임 로직 한 틱. 순수 함수: 입력 상태를 바꾸지 않고 새 상태를 돌려준다.
-import { setMoveTarget, movePlayer } from './movement.js';
+import { setMoveTarget, movePlayer, computeMoveSpeed } from './movement.js';
+import { addEffect, tickEffects } from './effects.js';
 import { applyDamage, spendMana, restoreFull } from './combat.js';
 import { orderAttack, cancelAttack, updateAttack, updateProjectile } from './attack.js';
 
@@ -20,6 +21,11 @@ export function update(state, inputs, dt) {
   let projectiles = state.projectiles.map((p) => ({ ...p }));
   let nextId = state.nextId;
 
+  // 0. 지속 효과 시간 감소
+  for (const id in players) {
+    tickEffects(players[id], dt);
+  }
+
   // 1. 입력 처리
   for (const input of inputs) {
     const player = players[input.playerId];
@@ -33,6 +39,11 @@ export function update(state, inputs, dt) {
     } else if (input.type === 'debug') {
       applyDebugInput(players, player, input.action);
     }
+  }
+
+  // 최종 이동속도 계산 (이번 틱 이동·추격에 사용)
+  for (const id in players) {
+    players[id].moveSpeed = computeMoveSpeed(players[id]);
   }
 
   // 2. 평타 진행 (추격 이동 목표 설정, 발사)
@@ -63,6 +74,8 @@ export function update(state, inputs, dt) {
 function applyDebugInput(players, player, action) {
   if (action === 'damage') applyDamage(player, 100);
   else if (action === 'spendMana') spendMana(player, 50);
+  else if (action === 'slow') addEffect(player, { kind: 'slow', value: 0.4, duration: 3 });
+  else if (action === 'haste') addEffect(player, { kind: 'percent', value: 0.5, duration: 3 });
   else if (action === 'restore') {
     for (const id in players) restoreFull(players[id]);
   }
