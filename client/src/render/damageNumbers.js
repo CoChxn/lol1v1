@@ -1,4 +1,11 @@
 // 데미지 숫자 (화면 효과일 뿐, 게임 판정과 무관). 맞은 캐릭터 머리 위에 떠올랐다가 사라진다.
+// 색은 피해 종류로 구분하고, 치명타는 같은 색으로 크게 표시한다.
+
+const DAMAGE_COLORS = {
+  physical: '#ff9a2e', // 물리: 주황
+  magic: '#4aa8ff', // 마법: 파랑
+  true: '#ffffff', // 고정: 흰색 (임시)
+};
 
 const DURATION = 0.9; // 초
 const RISE = 50; // 떠오르는 높이
@@ -14,7 +21,7 @@ export function createDamageNumbers() {
         y: pos.y,
         text: String(Math.round(event.amount)),
         crit: event.crit,
-        skill: !!event.skill,
+        color: DAMAGE_COLORS[event.damageType] ?? '#ffffff',
         start: performance.now(),
       });
     },
@@ -32,7 +39,7 @@ export function createDamageNumbers() {
         ctx.strokeStyle = 'rgba(0, 0, 0, 0.8)';
         const y = it.y - RISE * t;
         ctx.strokeText(it.text, it.x, y);
-        ctx.fillStyle = it.crit ? '#ff9a2e' : it.skill ? '#ffd84a' : '#ffffff';
+        ctx.fillStyle = it.color;
         ctx.fillText(it.text, it.x, y);
       }
       ctx.globalAlpha = 1;

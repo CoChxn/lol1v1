@@ -1,5 +1,6 @@
 // 데미지 계산과 난수.
 // - 평타: 공격력(AD) 100% 물리 피해 → 치명타 → 방어력으로 감소 → 적중 시 효과(on-hit)
+// - 데미지 이벤트: { type: 'damage', damageType: 'physical' | 'magic' | 'true', amount, raw, crit, skill? }
 // - 난수는 Math.random 대신 게임 상태에 저장된 시드로 만든다.
 //   같은 상태 + 같은 입력이면 서버·테스트에서 항상 같은 결과가 나온다 (update가 순수 함수로 유지됨).
 import { applyDamage } from './combat.js';
@@ -63,7 +64,7 @@ export function dealAttackDamage(attacker, target, hit, ctx) {
   const raw = hit.crit ? hit.raw * hit.critDamage : hit.raw;
   const amount = applyDamage(target, physicalDamage(raw, target.armor));
   // raw: 방어력 적용 전 피해, amount: 실제로 들어간 피해 (무적이면 0)
-  ctx.events.push({ type: 'damage', targetId: target.id, sourceId: attacker?.id ?? null, raw, amount, crit: hit.crit });
+  ctx.events.push({ type: 'damage', damageType: 'physical', targetId: target.id, sourceId: attacker?.id ?? null, raw, amount, crit: hit.crit });
   for (const effect of ON_HIT_EFFECTS) effect(attacker, target, ctx);
 }
 
@@ -76,5 +77,5 @@ export function dealAttackDamage(attacker, target, hit, ctx) {
  */
 export function dealSkillDamage(attacker, target, raw, skill, ctx) {
   const amount = applyDamage(target, physicalDamage(raw, target.armor));
-  ctx.events.push({ type: 'damage', targetId: target.id, sourceId: attacker?.id ?? null, raw, amount, crit: false, skill });
+  ctx.events.push({ type: 'damage', damageType: 'physical', targetId: target.id, sourceId: attacker?.id ?? null, raw, amount, crit: false, skill });
 }
