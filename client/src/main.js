@@ -52,6 +52,7 @@ function pickEnemy(wx, wy) {
 const inputControl = setupInput(canvas, {
   screenToWorld: (sx, sy) => renderer.camera.screenToWorld(sx, sy),
   pickEnemy,
+  getDummyArmor: () => state.players.dummy?.armor,
   onInput(input) {
     pendingInputs.push({ ...input, playerId: MY_ID });
     if (input.type === 'move') renderer.clickMarker.show(input.x, input.y);

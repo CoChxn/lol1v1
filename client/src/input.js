@@ -11,9 +11,10 @@
  * @param {(sx: number, sy: number) => {x: number, y: number}} opts.screenToWorld
  * @param {(wx: number, wy: number) => string|null} opts.pickEnemy  그 지점에 있는 적 ID (없으면 null)
  * @param {(input: object) => void} opts.onInput  만들어진 입력 전달
+ * @param {() => number|undefined} [opts.getDummyArmor]  [테스트용] 허수아비의 현재 방어력
  * @returns {{ isAttackMoveMode: () => boolean }}
  */
-export function setupInput(canvas, { screenToWorld, pickEnemy, onInput }) {
+export function setupInput(canvas, { screenToWorld, pickEnemy, onInput, getDummyArmor = () => 0 }) {
   let rightHeld = false;
   let attackMoveMode = false;
   let lastMouse = null;
@@ -88,6 +89,13 @@ export function setupInput(canvas, { screenToWorld, pickEnemy, onInput }) {
     } else if (key === 's') {
       attackMoveMode = false;
       onInput({ type: 'stop' });
+    } else if (e.key === '8') {
+      // [테스트용] 허수아비 방어력 변경
+      const answer = window.prompt('허수아비 방어력 입력 (음수 가능)', String(getDummyArmor()));
+      const value = Number(answer);
+      if (answer !== null && answer.trim() !== '' && Number.isFinite(value)) {
+        onInput({ type: 'debug', action: 'setArmor', targetId: 'dummy', value });
+      }
     } else if (DEBUG_KEYS[e.key]) {
       onInput({ type: 'debug', action: DEBUG_KEYS[e.key] });
     }
