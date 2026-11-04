@@ -61,8 +61,8 @@ const ON_HIT_EFFECTS = [];
  */
 export function dealAttackDamage(attacker, target, hit, ctx) {
   const raw = hit.crit ? hit.raw * hit.critDamage : hit.raw;
-  const amount = physicalDamage(raw, target.armor);
-  applyDamage(target, amount);
-  ctx.events.push({ type: 'damage', targetId: target.id, sourceId: attacker?.id ?? null, amount, crit: hit.crit });
+  const amount = applyDamage(target, physicalDamage(raw, target.armor));
+  // raw: 방어력 적용 전 피해, amount: 실제로 들어간 피해 (무적이면 0)
+  ctx.events.push({ type: 'damage', targetId: target.id, sourceId: attacker?.id ?? null, raw, amount, crit: hit.crit });
   for (const effect of ON_HIT_EFFECTS) effect(attacker, target, ctx);
 }

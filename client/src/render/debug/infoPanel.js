@@ -24,7 +24,7 @@ function unitLines(label, p) {
     `  move speed ${p.moveSpeed.toFixed(1)} (base ${p.baseMoveSpeed})`,
     `  attack speed ${p.attackSpeed.toFixed(3)} (base ${p.baseAttackSpeed.toFixed(3)})  T ${(1 / p.attackSpeed).toFixed(3)}s  W ${computeWindup(atk, p.attackSpeed, p.baseAttackSpeed).toFixed(3)}s`,
     `  attack [${p.attackState}]${p.attackMoveTarget ? ' attack-move' : ''}  AD ${p.attackDamage}  range ${atk.range} (+${WINDUP_CANCEL_LEEWAY})`,
-    `  effects ${effects}`,
+    `  effects ${effects}${p.invulnerable ? '  [무적]' : ''}${p.infiniteMana ? '  [무한 마나]' : ''}${p.isDummy ? `  [행동: ${p.dummyMode}]` : ''}`,
   ];
 }
 
@@ -53,7 +53,7 @@ export function drawInfoPanel(ctx, state, myId, { fps, combatLog }) {
         '[전투 기록] 시간  공격자 → 대상  원래 피해 × 방어력 배율 = 최종',
         ...log.map(
           (e) =>
-            `${e.time.toFixed(2).padStart(7)}s  ${e.source} → ${e.target}  ${e.raw.toFixed(1)} (armor ${e.armor}) = ${e.amount.toFixed(1)}${e.crit ? '  치명타!' : ''}`,
+            `${e.time.toFixed(2).padStart(7)}s  ${e.source} → ${e.target}  ${e.raw.toFixed(1)} (armor ${e.armor}) = ${e.amount.toFixed(1)}${e.crit ? '  치명타!' : ''}${e.blocked ? '  (무적)' : ''}`,
         ),
       ],
       '#fd8',

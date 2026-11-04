@@ -2,6 +2,7 @@
 import { setMoveTarget, movePlayer, computeMoveSpeed } from './movement.js';
 import { tickEffects } from './effects.js';
 import { applyDebugInput } from './debug.js';
+import { dummyInputs } from './dummyAI.js';
 import {
   orderAttack,
   orderAttackMove,
@@ -32,7 +33,8 @@ export function update(state, inputs, dt) {
   let projectiles = state.projectiles.map((p) => ({ ...p }));
   let nextId = state.nextId;
   // 발사 직후라 처리하지 못하고 미뤄 둔 명령을 먼저 처리한다
-  const allInputs = [...state.deferredInputs, ...inputs];
+  // 허수아비 행동(개발자 모드)이 만든 입력도 일반 입력과 똑같이 처리한다
+  const allInputs = [...state.deferredInputs, ...inputs, ...dummyInputs(players)];
   const deferredInputs = [];
   // 난수·이벤트 (난수 시드는 다음 상태로 이어진다)
   const ctx = { rng: { seed: state.rngSeed }, events: [] };
@@ -63,7 +65,7 @@ export function update(state, inputs, dt) {
     } else if (input.type === 'stop') {
       orderStop(player);
     } else if (input.type === 'debug') {
-      applyDebugInput(players, player, input);
+      applyDebugInput(players, player, input, state.map);
     }
   }
 

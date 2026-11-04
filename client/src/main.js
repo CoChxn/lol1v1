@@ -22,11 +22,17 @@ socket.on('disconnect', (reason) => {
 // --- 게임 상태 (Phase 2: 로직을 브라우저에서 직접 실행) ---
 const MY_ID = 'local'; // Phase 4에서 서버가 준 ID로 바뀐다
 
-let state = createGameState();
-const spawn = state.map.spawns.blue;
-state = addPlayer(state, createPlayer({ id: MY_ID, name: 'Player', team: 'blue', x: spawn.x, y: spawn.y }));
-// 연습용 허수아비: 입력을 받지 않으므로 움직이지 않는다 (Phase 3 전투 테스트용)
-state = addPlayer(state, createPlayer({ id: 'dummy', name: 'Dummy', team: 'red', x: spawn.x + 1100, y: spawn.y, isDummy: true }));
+// 처음 상태 (개발자 모드 "전체 초기화"도 이 함수를 쓴다. Phase 4에서는 서버가 만든다)
+function createInitialState() {
+  let s = createGameState();
+  const spawn = s.map.spawns.blue;
+  s = addPlayer(s, createPlayer({ id: MY_ID, name: 'Player', team: 'blue', x: spawn.x, y: spawn.y }));
+  // 연습용 허수아비 (개발자 모드에서 행동을 바꿀 수 있다)
+  s = addPlayer(s, createPlayer({ id: 'dummy', name: 'Dummy', team: 'red', x: spawn.x + 1100, y: spawn.y, isDummy: true }));
+  return s;
+}
+
+let state = createInitialState();
 let prevState = state;
 let pendingInputs = [];
 
@@ -58,7 +64,13 @@ function sendInput(input) {
   pendingInputs.push({ ...input, playerId: MY_ID });
 }
 
-const statPanel = createStatPanel({ getState: () => state, myId: MY_ID, onInput: sendInput, timeControl });
+function resetGame() {
+  state = createInitialState();
+  prevState = state;
+  pendingInputs = [];
+}
+
+const statPanel = createStatPanel({ getState: () => state, myId: MY_ID, onInput: sendInput, timeControl, onReset: resetGame });
 
 const inputControl = setupInput(canvas, {
   screenToWorld: (sx, sy) => renderer.camera.screenToWorld(sx, sy),

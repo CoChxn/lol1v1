@@ -55,6 +55,10 @@ export function setupInput(canvas, { screenToWorld, pickEnemy, onInput, getDummy
       attackMoveMode = false;
       rightHeld = true;
       sendRightClick(e);
+    } else if (e.button === 0 && isDevMode() && (e.ctrlKey || e.shiftKey)) {
+      // [개발자 모드] Ctrl+좌클릭: 허수아비 순간이동 / Shift+좌클릭: 내 캐릭터 순간이동
+      const { x, y } = screenToWorld(e.clientX, e.clientY);
+      onInput({ type: 'debug', action: 'teleport', targetId: e.ctrlKey ? 'dummy' : undefined, x, y });
     } else if (e.button === 0 && attackMoveMode) {
       attackMoveMode = false;
       sendAttackMove(e);

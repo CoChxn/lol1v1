@@ -219,7 +219,46 @@ if (!failed) {
     fail(`데미지 공식: ${e.message}`);
   }
 
-  // 7. 근접 평타: 투사체 없이 즉시 적중 (검사용 임시 챔피언)
+  // 7. 개발자 모드 기능: 허수아비 행동, 무적, 무한 마나, 순간이동
+  try {
+    const id = Object.keys(CHAMPIONS)[0];
+    const dbg = (input) => ({ playerId: 'a', type: 'debug', ...input });
+    // 왔다 갔다: 기준 위치 좌우로 움직인다
+    let s = step(duel(id, 1100), [dbg({ action: 'setDummyMode', targetId: 'b', mode: 'patrol' })]);
+    const anchor = s.players.b.x;
+    let minX = anchor;
+    let maxX = anchor;
+    for (let i = 0; i < 30 * 6; i++) {
+      s = step(s);
+      minX = Math.min(minX, s.players.b.x);
+      maxX = Math.max(maxX, s.players.b.x);
+    }
+    if (maxX - anchor < 250 || anchor - minX < 250) throw new Error(`왔다 갔다 범위가 좁습니다 (${(minX - anchor).toFixed(0)} ~ ${(maxX - anchor).toFixed(0)})`);
+    // 나를 공격: 허수아비가 쫓아와서 때린다
+    s = step(duel(id, 1100), [dbg({ action: 'setDummyMode', targetId: 'b', mode: 'attack' })]);
+    for (let i = 0; i < 30 * 5; i++) s = step(s);
+    if (s.players.a.hp >= s.players.a.maxHp) throw new Error('공격 모드 허수아비가 나를 때리지 않았습니다');
+    // 무적: 맞아도 체력이 그대로, 데미지 이벤트는 0
+    s = step(duel(id), [dbg({ action: 'setFlag', targetId: 'b', flag: 'invulnerable', value: true }), attackB]);
+    let ev = null;
+    for (let i = 0; i < 60 && !ev; i++) {
+      s = step(s);
+      ev = s.events.find((e) => e.type === 'damage');
+    }
+    if (!ev || ev.amount !== 0 || s.players.b.hp !== s.players.b.maxHp) throw new Error('무적인데 피해를 받았습니다');
+    // 무한 마나
+    s = step(duel(id), [dbg({ action: 'setFlag', flag: 'infiniteMana', value: true }), dbg({ action: 'spendMana' })]);
+    if (s.players.a.mana !== s.players.a.maxMana) throw new Error('무한 마나인데 마나가 줄었습니다');
+    // 순간이동: 벽 밖을 찍으면 벽 안쪽으로
+    s = step(duel(id), [dbg({ action: 'teleport', targetId: 'b', x: -500, y: 99999 })]);
+    const b = s.players.b;
+    if (b.x !== b.pathingRadius || b.y !== s.map.height - b.pathingRadius) throw new Error(`순간이동 위치가 벽 안쪽이 아닙니다 (${b.x}, ${b.y})`);
+    console.log('✓ 개발자 모드 기능 (허수아비 왔다 갔다·공격, 무적, 무한 마나, 순간이동)');
+  } catch (e) {
+    fail(`개발자 모드 기능: ${e.message}`);
+  }
+
+  // 8. 근접 평타: 투사체 없이 즉시 적중 (검사용 임시 챔피언)
   try {
     const base = CHAMPIONS[Object.keys(CHAMPIONS)[0]];
     CHAMPIONS.__melee = { ...base, attack: { type: 'melee', range: 125, damage: 10, attackSpeed: 1, windupRatio: 0.25 } };

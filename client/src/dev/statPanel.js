@@ -30,7 +30,7 @@ const CSS = `
 .dev-panel h3 { margin: 4px 0 6px; font-size: 13px; color: #fd8; }
 .dev-panel .tabs { display: flex; gap: 4px; margin-bottom: 8px; }
 .dev-panel .tabs button { flex: 1; }
-.dev-panel .tabs button.on { background: #3a6; color: #fff; border-color: #5c8; }
+.dev-panel .tabs button.on, .dev-panel .grid button.on { background: #3a6; color: #fff; border-color: #5c8; }
 .dev-panel label { display: flex; justify-content: space-between; align-items: center; gap: 6px; margin: 3px 0; }
 .dev-panel input { width: 80px; background: #111; color: #fff; border: 1px solid #556; border-radius: 3px; padding: 2px 4px; font: 12px monospace; text-align: right; }
 .dev-panel input:focus { border-color: #fd8; outline: none; }
@@ -48,9 +48,10 @@ const CSS = `
  * @param {string} opts.myId
  * @param {(input: object) => void} opts.onInput
  * @param {object} opts.timeControl  시간 조절 (timeControl.js)
+ * @param {() => void} opts.onReset  전체 초기화
  * @returns {{ update: (devMode: boolean) => void }}
  */
-export function createStatPanel({ getState, myId, onInput, timeControl }) {
+export function createStatPanel({ getState, myId, onInput, timeControl, onReset }) {
   const style = document.createElement('style');
   style.textContent = CSS;
   document.head.appendChild(style);
@@ -156,11 +157,65 @@ export function createStatPanel({ getState, myId, onInput, timeControl }) {
   restore.onclick = () => send({ action: 'restore' });
   grid.append(clear, restore);
 
+  // 무적·무한 마나 (선택한 대상)
+  const flagTitle = document.createElement('h3');
+  flagTitle.textContent = '치트 (선택한 대상)';
+  const flagGrid = document.createElement('div');
+  flagGrid.className = 'grid';
+  const flagButtons = [
+    ['invulnerable', '무적'],
+    ['infiniteMana', '무한 마나'],
+  ].map(([flag, label]) => {
+    const b = document.createElement('button');
+    b.onclick = () => {
+      const p = getState().players[targetId];
+      if (p) send({ action: 'setFlag', flag, value: !p[flag] });
+    };
+    flagGrid.appendChild(b);
+    return [flag, label, b];
+  });
+
+  // 허수아비 행동
+  const dummyTitle = document.createElement('h3');
+  dummyTitle.textContent = '허수아비 행동';
+  const dummyRow = document.createElement('div');
+  dummyRow.className = 'tabs';
+  const dummyButtons = [
+    ['idle', '가만히'],
+    ['patrol', '왔다 갔다'],
+    ['attack', '나를 공격'],
+  ].map(([mode, label]) => {
+    const b = document.createElement('button');
+    b.textContent = label;
+    b.onclick = () => onInput({ type: 'debug', targetId: 'dummy', action: 'setDummyMode', mode });
+    dummyRow.appendChild(b);
+    return [mode, b];
+  });
+
+  const resetBtn = document.createElement('button');
+  resetBtn.textContent = '전체 초기화 (위치·체력·효과)';
+  resetBtn.style.width = '100%';
+  resetBtn.style.marginTop = '8px';
+  resetBtn.onclick = () => onReset();
+
   const hint = document.createElement('div');
   hint.className = 'hint';
-  hint.textContent = '칸에 입력하는 동안에는 게임 키(A, S, 숫자)가 동작하지 않습니다.';
+  hint.innerHTML =
+    'Ctrl+좌클릭: 허수아비 순간이동<br>Shift+좌클릭: 내 캐릭터 순간이동<br>칸에 입력하는 동안에는 게임 키(A, S, 숫자)가 동작하지 않습니다.';
 
-  root.append(timeTitle, timeRow, speedRow, tabs, statsTitle, statsBox, effectTitle, grid, hint);
+  function refreshCheats() {
+    const players = getState().players;
+    const p = players[targetId];
+    for (const [flag, label, b] of flagButtons) {
+      const on = !!p?.[flag];
+      b.textContent = `${label}: ${on ? '켜짐' : '꺼짐'}`;
+      b.classList.toggle('on', on);
+    }
+    const mode = players.dummy?.dummyMode;
+    for (const [m, b] of dummyButtons) b.classList.toggle('on', m === mode);
+  }
+
+  root.append(timeTitle, timeRow, speedRow, tabs, statsTitle, statsBox, effectTitle, grid, flagTitle, flagGrid, dummyTitle, dummyRow, resetBtn, hint);
   refreshTabs();
 
   // 입력 중이 아닌 칸은 현재 값으로 계속 갱신
@@ -182,6 +237,7 @@ export function createStatPanel({ getState, myId, onInput, timeControl }) {
       root.style.display = devMode ? 'block' : 'none';
       if (!devMode) return;
       refreshTime();
+      refreshCheats();
       const now = performance.now();
       if (now - lastRefresh > 100) {
         refreshValues();

@@ -51,6 +51,10 @@ export function createPlayer({ id, name, team, x, y, championId = DEFAULT_CHAMPI
     attackWindupTotal: 0, // 이번 선딜레이 전체 길이 W (표시용)
     commandLockTicks: 0, // 남은 명령 잠금 틱 수. 0보다 크면 새 명령을 다음 틱으로 미룬다 (발사 직후 1틱)
     targetable: true, // false면 평타·스킬의 대상이 될 수 없다
+    invulnerable: false, // true면 피해를 받지 않는다 (무적)
+    infiniteMana: false, // true면 마나가 줄지 않는다
+    dummyMode: 'idle', // [허수아비] 'idle' | 'patrol' | 'attack' (dummyAI.js)
+    patrolAnchor: isDummy ? { x, y } : null, // [허수아비] 왔다 갔다 기준 위치
     // 유체화: true면 다른 캐릭터와의 이동 충돌을 무시한다
     ghosted: false,
     isDummy,
