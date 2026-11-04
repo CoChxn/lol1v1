@@ -3,6 +3,8 @@ import { createCamera } from './camera.js';
 import { drawArena, WALL_THICKNESS } from './arena.js';
 import { drawPlayers, lerpPlayerPos } from './players.js';
 import { createClickMarker } from './clickMarker.js';
+import { drawProjectiles } from './projectiles.js';
+import { drawRangeRing } from './rangeRing.js';
 
 export function createRenderer(canvas) {
   const ctx = canvas.getContext('2d');
@@ -50,8 +52,10 @@ export function createRenderer(canvas) {
     // 월드
     camera.apply(ctx);
     drawArena(ctx, state.map);
+    if (me) drawRangeRing(ctx, me, focus.x, focus.y);
     clickMarker.draw(ctx);
     drawPlayers(ctx, prevState, state, alpha, myId);
+    drawProjectiles(ctx, prevState, state, alpha);
 
     // 화면 고정 UI
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -61,7 +65,9 @@ export function createRenderer(canvas) {
     if (me) {
       ctx.fillText(`pos ${me.x.toFixed(0)}, ${me.y.toFixed(0)}  ${me.target ? 'moving' : 'idle'}`, 10, 40);
       ctx.fillText(`hp ${me.hp}/${me.maxHp}  mana ${me.mana}/${me.maxMana}`, 10, 60);
-      ctx.fillText('[테스트] 1: 체력-100  2: 마나-50  3: 전부 회복', 10, 80);
+      const dummy = state.players.dummy;
+      if (dummy) ctx.fillText(`dummy hp ${dummy.hp}/${dummy.maxHp}`, 10, 100);
+      ctx.fillText('[테스트] 1: 내 체력-100  2: 내 마나-50  3: 모두 회복', 10, 80);
     }
   }
 

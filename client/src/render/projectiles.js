@@ -1,0 +1,24 @@
+// 투사체 그리기. 이전 틱 위치와 보간한다.
+
+export function drawProjectiles(ctx, prevState, state, alpha) {
+  const prevById = new Map(prevState.projectiles.map((p) => [p.id, p]));
+
+  for (const proj of state.projectiles) {
+    const prev = prevById.get(proj.id);
+    const x = prev ? prev.x + (proj.x - prev.x) * alpha : proj.x;
+    const y = prev ? prev.y + (proj.y - prev.y) * alpha : proj.y;
+    const owner = state.players[proj.ownerId];
+    const color = owner?.team === 'red' ? '255, 120, 90' : '120, 200, 255';
+
+    // 빛 번짐
+    ctx.fillStyle = `rgba(${color}, 0.3)`;
+    ctx.beginPath();
+    ctx.arc(x, y, proj.radius * 2, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = `rgb(${color})`;
+    ctx.beginPath();
+    ctx.arc(x, y, proj.radius, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}

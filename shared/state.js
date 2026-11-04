@@ -8,6 +8,7 @@ import { MAP_WIDTH, MAP_HEIGHT, SPAWN_POINTS } from './constants.js';
  * - map: 아레나 크기와 진영별 시작 지점
  * - players: 플레이어 목록 { [id]: player }
  * - projectiles: 날아가는 투사체 목록
+ * - nextId: 다음에 만들 투사체 등의 고유 번호
  */
 export function createGameState() {
   return {
@@ -23,6 +24,7 @@ export function createGameState() {
     },
     players: {},
     projectiles: [],
+    nextId: 1,
   };
 }
 

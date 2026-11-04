@@ -4,28 +4,35 @@
  * @param {HTMLCanvasElement} canvas
  * @param {object} opts
  * @param {(sx: number, sy: number) => {x: number, y: number}} opts.screenToWorld
+ * @param {(wx: number, wy: number) => string|null} opts.pickEnemy  그 지점에 있는 적 ID (없으면 null)
  * @param {(input: object) => void} opts.onInput  만들어진 입력 전달
  */
-export function setupInput(canvas, { screenToWorld, onInput }) {
+export function setupInput(canvas, { screenToWorld, pickEnemy, onInput }) {
   let rightHeld = false;
 
   // 브라우저 우클릭 메뉴 차단
   canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
-  function sendMove(e) {
+  // 우클릭: 적 위면 평타, 아니면 이동
+  function sendRightClick(e) {
     const { x, y } = screenToWorld(e.clientX, e.clientY);
-    onInput({ type: 'move', x, y });
+    const enemyId = pickEnemy(x, y);
+    if (enemyId) onInput({ type: 'attack', targetId: enemyId });
+    else onInput({ type: 'move', x, y });
   }
 
   canvas.addEventListener('mousedown', (e) => {
     if (e.button !== 2) return;
     rightHeld = true;
-    sendMove(e);
+    sendRightClick(e);
   });
 
-  // 우클릭을 누른 채 움직이면 목표를 계속 갱신 (LoL 방식)
   canvas.addEventListener('mousemove', (e) => {
-    if (rightHeld) sendMove(e);
+    const { x, y } = screenToWorld(e.clientX, e.clientY);
+    // 적 위에 마우스를 올리면 커서 변경
+    canvas.style.cursor = pickEnemy(x, y) ? 'crosshair' : 'default';
+    // 우클릭을 누른 채 움직이면 명령을 계속 갱신 (LoL 방식)
+    if (rightHeld) sendRightClick(e);
   });
 
   window.addEventListener('mouseup', (e) => {

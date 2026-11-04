@@ -15,8 +15,3 @@ export const SPAWN_POINTS = {
   red: { x: MAP_WIDTH - 250, y: MAP_HEIGHT / 2 },
 };
 
-// 캐릭터 기본값 (3-1에서 챔피언 데이터로 옮긴다)
-export const PLAYER_RADIUS = 30;
-export const DEFAULT_MOVE_SPEED = 330; // 픽셀/초
-export const DEFAULT_MAX_HP = 600;
-export const DEFAULT_MAX_MANA = 300;

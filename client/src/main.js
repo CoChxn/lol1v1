@@ -31,8 +31,21 @@ const canvas = document.getElementById('game');
 const renderer = createRenderer(canvas);
 
 // --- 입력 ---
+// 클릭한 지점에 있는 적 찾기 (판정 여유 10픽셀). 실제로 공격 가능한지는 shared 로직이 다시 확인한다.
+const PICK_TOLERANCE = 10;
+function pickEnemy(wx, wy) {
+  const me = state.players[MY_ID];
+  for (const id in state.players) {
+    const p = state.players[id];
+    if (p.team === me.team || p.hp <= 0) continue;
+    if (Math.hypot(p.x - wx, p.y - wy) <= p.radius + PICK_TOLERANCE) return id;
+  }
+  return null;
+}
+
 setupInput(canvas, {
   screenToWorld: (sx, sy) => renderer.camera.screenToWorld(sx, sy),
+  pickEnemy,
   onInput(input) {
     pendingInputs.push({ ...input, playerId: MY_ID });
     if (input.type === 'move') renderer.clickMarker.show(input.x, input.y);
