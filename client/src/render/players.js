@@ -1,5 +1,5 @@
 // 플레이어 그리기. 이전 상태와 현재 상태 사이를 보간해서 부드럽게 그린다.
-import { drawOverhead } from './overhead.js';
+import { drawOverhead, drawAttackTimer } from './overhead.js';
 
 const TEAM_COLORS = {
   blue: { body: '#4a90ff', outline: '#cfe0ff' },
@@ -24,6 +24,7 @@ export function drawPlayers(ctx, prevState, state, alpha, myId) {
     const p = state.players[id];
     const { x, y } = lerpPlayerPos(prevState.players[id], p, alpha);
     drawOverhead(ctx, p, x, y, id === myId);
+    if (id === myId) drawAttackTimer(ctx, p, x, y);
   }
 }
 

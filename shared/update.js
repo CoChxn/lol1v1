@@ -2,7 +2,7 @@
 import { setMoveTarget, movePlayer, computeMoveSpeed } from './movement.js';
 import { addEffect, tickEffects } from './effects.js';
 import { applyDamage, spendMana, restoreFull } from './combat.js';
-import { orderAttack, cancelAttack, updateAttack, updateProjectile } from './attack.js';
+import { orderAttack, cancelAttack, updateAttack, updateProjectile, computeAttackSpeed } from './attack.js';
 
 /**
  * @param {object} state  현재 게임 상태
@@ -41,9 +41,10 @@ export function update(state, inputs, dt) {
     }
   }
 
-  // 최종 이동속도 계산 (이번 틱 이동·추격에 사용)
+  // 최종 이동속도·총 공격속도 계산 (이번 틱 이동·평타에 사용)
   for (const id in players) {
     players[id].moveSpeed = computeMoveSpeed(players[id]);
+    players[id].attackSpeed = computeAttackSpeed(players[id]);
   }
 
   // 2. 평타 진행 (추격 이동 목표 설정, 발사)
@@ -76,6 +77,7 @@ function applyDebugInput(players, player, action) {
   else if (action === 'spendMana') spendMana(player, 50);
   else if (action === 'slow') addEffect(player, { kind: 'slow', value: 0.4, duration: 3 });
   else if (action === 'haste') addEffect(player, { kind: 'percent', value: 0.5, duration: 3 });
+  else if (action === 'attackSpeed') addEffect(player, { kind: 'attackSpeed', value: 1, duration: 3 });
   else if (action === 'restore') {
     for (const id in players) restoreFull(players[id]);
   }

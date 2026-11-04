@@ -56,3 +56,33 @@ export function drawOverhead(ctx, p, x, y, isMe) {
   ctx.textAlign = 'start';
   ctx.textBaseline = 'alphabetic';
 }
+
+const TIMER_WIDTH = 60;
+const TIMER_HEIGHT = 5;
+
+/**
+ * 공격 타이머 바 (캐릭터 아래). 선딜레이: 노란색으로 차오름 / 쿨다운: 회색이 줄어듦.
+ * 타이머가 0이면 그리지 않는다.
+ */
+export function drawAttackTimer(ctx, p, x, y) {
+  const left = Math.round(x - TIMER_WIDTH / 2);
+  const top = Math.round(y + p.gameplayRadius + 10);
+
+  let color;
+  let ratio;
+  if (p.attackWindup !== null && p.attackWindupTotal > 0) {
+    color = '#ffd84a';
+    ratio = 1 - p.attackWindup / p.attackWindupTotal;
+  } else if (p.attackTimer > 0 && p.attackTimerTotal > 0) {
+    color = '#9a9a9a';
+    const cooldownTotal = p.attackTimerTotal - p.attackWindupTotal;
+    ratio = cooldownTotal > 0 ? p.attackTimer / cooldownTotal : 0;
+  } else {
+    return;
+  }
+
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+  ctx.fillRect(left - 1, top - 1, TIMER_WIDTH + 2, TIMER_HEIGHT + 2);
+  ctx.fillStyle = color;
+  ctx.fillRect(left, top, TIMER_WIDTH * Math.min(Math.max(ratio, 0), 1), TIMER_HEIGHT);
+}

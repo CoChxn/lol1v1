@@ -1,4 +1,5 @@
 // Canvas 2D 렌더러. 게임 상태를 읽어서 그리기만 하고, 상태를 바꾸지 않는다.
+import { getChampion, computeWindup } from '@lol1v1/shared';
 import { createCamera } from './camera.js';
 import { drawArena, WALL_THICKNESS } from './arena.js';
 import { drawPlayers, lerpPlayerPos } from './players.js';
@@ -69,7 +70,15 @@ export function createRenderer(canvas) {
       if (dummy) ctx.fillText(`dummy hp ${dummy.hp}/${dummy.maxHp}`, 10, 100);
       const effects = me.effects.map((e) => `${e.kind} ${e.value} (${e.remaining.toFixed(1)}s)`).join(', ');
       ctx.fillText(`move speed ${me.moveSpeed.toFixed(1)} (base ${me.baseMoveSpeed})  ${effects}`, 10, 120);
-      ctx.fillText('[테스트] 1: 내 체력-100  2: 내 마나-50  3: 모두 회복  4: 둔화 40% 3초  5: 이속 +50% 3초', 10, 80);
+      const atk = getChampion(me.championId).attack;
+      const T = 1 / me.attackSpeed;
+      const phase = me.attackWindup !== null ? 'windup' : me.attackTimer > 0 ? 'cooldown' : 'ready';
+      ctx.fillText(
+        `attack speed ${me.attackSpeed.toFixed(3)}  T ${T.toFixed(3)}s  W ${computeWindup(atk, me.attackSpeed).toFixed(3)}s  [${phase}]`,
+        10,
+        140,
+      );
+      ctx.fillText('[테스트] 1: 내 체력-100  2: 내 마나-50  3: 모두 회복  4: 둔화 40% 3초  5: 이속 +50% 3초  6: 공속 +100% 3초', 10, 80);
     }
   }
 
