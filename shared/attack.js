@@ -16,7 +16,7 @@
 // player·projectile은 update에서 복사한 객체라 직접 바꿔도 된다.
 import { getChampion } from './champions/index.js';
 import { setMoveTarget } from './movement.js';
-import { applyDamage } from './combat.js';
+import { rollCrit, dealAttackDamage } from './damage.js';
 import { TICK_DT } from './constants.js';
 
 // 소수점 오차로 타이머가 한 틱 더 남는 것을 막기 위한 여유값
@@ -181,9 +181,10 @@ export function resetAttackTimer(player) {
 /**
  * 한 틱 동안의 평타 진행. 원거리 평타를 발사하면 새 투사체를 돌려준다.
  * (player.attackSpeed는 update에서 이번 틱 총 공격속도로 미리 계산해 둔다)
+ * @param {{ rng: { seed: number }, events: object[] }} ctx  난수·이벤트
  * @returns {object|null} 새 투사체(아이디 없음)
  */
-export function updateAttack(player, players, map, dt) {
+export function updateAttack(player, players, map, dt, ctx) {
   player.attackTimer = Math.max(0, player.attackTimer - dt);
   const atk = getChampion(player.championId).attack;
   let shot = null;
@@ -239,8 +240,10 @@ export function updateAttack(player, players, map, dt) {
         player.attackWindup = null;
         player.attackWindupTargetId = null;
         player.commandLockTicks = 1;
+        // 피해량(공격력 100%)과 치명타 여부는 발사 순간 정한다. 방어력은 맞는 순간의 값으로 계산한다.
+        const hit = { raw: atk.damage, crit: rollCrit(player, ctx.rng), critDamage: player.critDamage };
         if (atk.type === 'melee') {
-          applyDamage(target, atk.damage); // 근접: 즉시 적중
+          dealAttackDamage(player, target, hit, ctx); // 근접: 즉시 적중
         } else {
           shot = {
             ownerId: player.id,
@@ -249,7 +252,7 @@ export function updateAttack(player, players, map, dt) {
             y: player.y,
             speed: atk.projectileSpeed,
             radius: atk.projectileRadius,
-            damage: atk.damage,
+            hit,
           };
         }
       }
@@ -273,7 +276,7 @@ function getAttackState(player, players, atk) {
  * 유도 투사체 이동과 적중 처리. 발사 시점의 대상을 매 틱 따라가다가 닿으면 적중한다.
  * @returns {boolean} 투사체를 계속 유지할지 (false면 제거)
  */
-export function updateProjectile(proj, players, dt) {
+export function updateProjectile(proj, players, dt, ctx) {
   const target = players[proj.targetId];
   if (!target || target.hp <= 0) return false;
 
@@ -292,7 +295,7 @@ export function updateProjectile(proj, players, dt) {
 
   // 원-원 충돌
   if (Math.hypot(target.x - proj.x, target.y - proj.y) < proj.radius + target.gameplayRadius) {
-    applyDamage(target, proj.damage);
+    dealAttackDamage(players[proj.ownerId], target, proj.hit, ctx);
     return false;
   }
   return true;

@@ -34,6 +34,8 @@ export function update(state, inputs, dt) {
   // 발사 직후라 처리하지 못하고 미뤄 둔 명령을 먼저 처리한다
   const allInputs = [...state.deferredInputs, ...inputs];
   const deferredInputs = [];
+  // 난수·이벤트 (난수 시드는 다음 상태로 이어진다)
+  const ctx = { rng: { seed: state.rngSeed }, events: [] };
 
   // 0. 지속 효과 시간 감소
   for (const id in players) {
@@ -78,7 +80,7 @@ export function update(state, inputs, dt) {
   // 2. 평타 진행 (어택땅 대상 찾기, 추적 이동 목표 설정, 발사)
   for (const id in players) {
     updateAttackMove(players[id], players, state.map);
-    const shot = updateAttack(players[id], players, state.map, dt);
+    const shot = updateAttack(players[id], players, state.map, dt, ctx);
     if (shot) projectiles.push({ id: nextId++, ...shot });
   }
 
@@ -88,7 +90,7 @@ export function update(state, inputs, dt) {
   }
 
   // 4. 투사체 이동·적중
-  projectiles = projectiles.filter((proj) => updateProjectile(proj, players, dt));
+  projectiles = projectiles.filter((proj) => updateProjectile(proj, players, dt, ctx));
 
   return {
     ...state,
@@ -98,6 +100,8 @@ export function update(state, inputs, dt) {
     projectiles,
     nextId,
     deferredInputs,
+    rngSeed: ctx.rng.seed,
+    events: ctx.events,
   };
 }
 
@@ -108,6 +112,7 @@ function applyDebugInput(players, player, action) {
   else if (action === 'slow') addEffect(player, { kind: 'slow', value: 0.4, duration: 3 });
   else if (action === 'haste') addEffect(player, { kind: 'percent', value: 0.5, duration: 3 });
   else if (action === 'attackSpeed') addEffect(player, { kind: 'attackSpeed', value: 1, duration: 3 });
+  else if (action === 'crit') addEffect(player, { kind: 'critChance', value: 1, duration: 3 });
   else if (action === 'restore') {
     for (const id in players) restoreFull(players[id]);
   }

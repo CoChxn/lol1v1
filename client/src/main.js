@@ -66,6 +66,13 @@ startLoop({
     prevState = state;
     state = update(state, pendingInputs, dt);
     pendingInputs = [];
+    // 이번 틱 이벤트 → 화면 효과
+    for (const ev of state.events) {
+      const target = state.players[ev.targetId];
+      if (ev.type === 'damage' && target) {
+        renderer.damageNumbers.add(ev, { x: target.x, y: target.y - target.gameplayRadius - 40 });
+      }
+    }
   },
   render(alpha) {
     renderer.render(prevState, state, alpha, MY_ID, { attackMoveMode: inputControl.isAttackMoveMode() });

@@ -27,4 +27,9 @@ export default {
 
   // 클릭 선택 반경
   selectionRadius: 75,
+
+  // 방어·치명타
+  armor: 24,
+  critChance: 0,
+  critDamage: 1.75,
 };

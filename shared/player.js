@@ -31,6 +31,9 @@ export function createPlayer({ id, name, team, x, y, championId = DEFAULT_CHAMPI
     maxHp: champ.maxHp,
     mana: champ.maxMana,
     maxMana: champ.maxMana,
+    armor: champ.armor, // 방어력
+    critChance: champ.critChance, // 기본 치명타 확률 (0~1)
+    critDamage: champ.critDamage, // 치명타 피해 배율
     // 이동 목표 지점. null이면 정지.
     target: null,
     // 평타 상태

@@ -6,6 +6,8 @@
 // - slow:    둔화 (S, 가장 강한 것 하나만) 예: { kind: 'slow', value: 0.4 } → 40% 둔화
 // 공격속도 효과 종류:
 // - attackSpeed: 추가 공격속도 (x, 합산) 예: { kind: 'attackSpeed', value: 0.5 } → +50%
+// 기타:
+// - critChance: 추가 치명타 확률 (합산) 예: { kind: 'critChance', value: 0.25 } → +25%p
 // player는 update에서 복사한 객체라 직접 바꿔도 된다. (effects 배열은 새로 만들어 교체한다)
 
 /** 효과 추가. duration은 초. */

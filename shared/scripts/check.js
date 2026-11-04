@@ -5,6 +5,7 @@ import { createGameState, addPlayer } from '../state.js';
 import { createPlayer } from '../player.js';
 import { update } from '../update.js';
 import { TICK_DT } from '../constants.js';
+import { armorMultiplier, physicalDamage } from '../damage.js';
 
 let failed = false;
 const fail = (msg) => {
@@ -48,7 +49,7 @@ if (!failed) {
         }
       }
       if (CHAMPIONS[id].attack.damage > 0 && s.players.b.hp >= startHp) throw new Error('20초 동안 평타가 한 번도 맞지 않았습니다');
-      console.log(`✓ ${id} 시뮬레이션 (20초 평타 후 상대 체력 ${startHp} → ${s.players.b.hp})`);
+      console.log(`✓ ${id} 시뮬레이션 (20초 평타 후 상대 체력 ${startHp} → ${Math.ceil(s.players.b.hp)})`);
     } catch (e) {
       fail(`${id} 시뮬레이션: ${e.message}`);
     }
@@ -170,7 +171,55 @@ if (!failed) {
     fail(`어택땅·정지: ${e.message}`);
   }
 
-  // 6. 근접 평타: 투사체 없이 즉시 적중 (검사용 임시 챔피언)
+  // 6. 데미지 공식: 방어력, 치명타, 같은 시드면 같은 결과
+  try {
+    const near = (a, b) => Math.abs(a - b) < 1e-9;
+    if (!near(armorMultiplier(0), 1) || !near(armorMultiplier(100), 0.5) || !near(armorMultiplier(-100), 1.5)) {
+      throw new Error('방어력 배율 공식이 다릅니다');
+    }
+    const id = Object.keys(CHAMPIONS)[0];
+    const champ = CHAMPIONS[id];
+    const firstHit = (s) => {
+      for (let i = 0; i < 90; i++) {
+        s = step(s, i === 0 ? [attackB] : []);
+        const ev = s.events.find((e) => e.type === 'damage');
+        if (ev) return ev;
+      }
+      throw new Error('3초 안에 평타가 맞지 않았습니다');
+    };
+    // 일반 평타: 공격력 × 100/(100+방어력)
+    let ev = firstHit(duel(id));
+    if (ev.crit || !near(ev.amount, physicalDamage(champ.attack.damage, champ.armor))) throw new Error(`일반 평타 피해가 다릅니다 (${ev.amount})`);
+    // 치명타 확률 100%: × critDamage
+    let s = duel(id);
+    s = { ...s, players: { ...s.players, a: { ...s.players.a, critChance: 1 } } };
+    ev = firstHit(s);
+    if (!ev.crit || !near(ev.amount, physicalDamage(champ.attack.damage * champ.critDamage, champ.armor))) throw new Error(`치명타 피해가 다릅니다 (${ev.amount})`);
+    // 치명타 확률 50%: 같은 시드면 같은 결과, 대략 절반
+    const crits = (seed) => {
+      let t = createGameState({ seed });
+      const { blue } = t.map.spawns;
+      t = addPlayer(t, { ...createPlayer({ id: 'a', name: 'A', team: 'blue', x: blue.x, y: blue.y, championId: id }), critChance: 0.5 });
+      t = addPlayer(t, { ...createPlayer({ id: 'b', name: 'B', team: 'red', x: blue.x + 300, y: blue.y, championId: id, isDummy: true }), maxHp: 1e9, hp: 1e9 });
+      t = { ...t, players: { ...t.players, a: { ...t.players.a, effects: [{ kind: 'attackSpeed', value: 10, remaining: 1e9 }] } } };
+      const out = [];
+      for (let i = 0; i < 30 * 60; i++) {
+        t = step(t, i === 0 ? [attackB] : []);
+        for (const e of t.events) if (e.type === 'damage') out.push(e.crit ? 1 : 0);
+      }
+      return out;
+    };
+    const a1 = crits(42).join('');
+    const a2 = crits(42).join('');
+    if (a1 !== a2) throw new Error('같은 시드인데 치명타 결과가 다릅니다');
+    const rate = a1.split('').filter((c) => c === '1').length / a1.length;
+    if (rate < 0.4 || rate > 0.6) throw new Error(`치명타 50%인데 실제 비율이 ${(rate * 100).toFixed(1)}%입니다`);
+    console.log(`✓ 데미지 공식 (방어력 감소, 치명타 ×${champ.critDamage}, 같은 시드 같은 결과, 50% 확률 → 실제 ${(rate * 100).toFixed(1)}% / ${a1.length}회)`);
+  } catch (e) {
+    fail(`데미지 공식: ${e.message}`);
+  }
+
+  // 7. 근접 평타: 투사체 없이 즉시 적중 (검사용 임시 챔피언)
   try {
     const base = CHAMPIONS[Object.keys(CHAMPIONS)[0]];
     CHAMPIONS.__melee = { ...base, attack: { type: 'melee', range: 125, damage: 10, attackSpeed: 1, windupRatio: 0.25 } };
@@ -181,7 +230,8 @@ if (!failed) {
       ticks++;
     }
     if (s.projectiles.length) throw new Error('근접 평타가 투사체를 만들었습니다');
-    if (s.players.b.hp !== s.players.b.maxHp - 10) throw new Error('근접 평타가 맞지 않았습니다');
+    const expected = s.players.b.maxHp - physicalDamage(10, s.players.b.armor);
+    if (Math.abs(s.players.b.hp - expected) > 1e-9) throw new Error('근접 평타가 맞지 않았습니다');
     console.log(`✓ 근접 평타 즉시 적중 (${ticks}틱 = ${(ticks / 30).toFixed(2)}초, 선딜레이 0.25초)`);
   } catch (e) {
     fail(`근접 평타: ${e.message}`);
