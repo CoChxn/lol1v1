@@ -2,4 +2,6 @@
 // DOM, Canvas, window, Socket.io를 참조하지 않는다.
 export * from './constants.js';
 export * from './state.js';
+export * from './player.js';
+export * from './movement.js';
 export * from './update.js';

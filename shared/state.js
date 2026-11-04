@@ -25,3 +25,11 @@ export function createGameState() {
     projectiles: [],
   };
 }
+
+/** 플레이어를 추가한 새 상태를 돌려준다. */
+export function addPlayer(state, player) {
+  return {
+    ...state,
+    players: { ...state.players, [player.id]: player },
+  };
+}

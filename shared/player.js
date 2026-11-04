@@ -1,0 +1,24 @@
+// 플레이어 데이터 생성.
+import { PLAYER_RADIUS, DEFAULT_MOVE_SPEED } from './constants.js';
+
+/**
+ * @param {object} opts
+ * @param {string} opts.id
+ * @param {string} opts.name   닉네임
+ * @param {'blue'|'red'} opts.team
+ * @param {number} opts.x
+ * @param {number} opts.y
+ */
+export function createPlayer({ id, name, team, x, y }) {
+  return {
+    id,
+    name,
+    team,
+    x,
+    y,
+    radius: PLAYER_RADIUS,
+    moveSpeed: DEFAULT_MOVE_SPEED,
+    // 이동 목표 지점. null이면 정지.
+    target: null,
+  };
+}

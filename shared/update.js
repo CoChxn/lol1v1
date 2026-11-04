@@ -1,4 +1,5 @@
 // 게임 로직 한 틱. 순수 함수: 입력 상태를 바꾸지 않고 새 상태를 돌려준다.
+import { setMoveTarget, movePlayer } from './movement.js';
 
 /**
  * @param {object} state  현재 게임 상태
@@ -7,10 +8,29 @@
  * @returns {object} 다음 게임 상태
  */
 export function update(state, inputs, dt) {
-  // TODO(2-3 이후): 입력 처리, 이동, 투사체, 충돌, 스킬 등
+  // 원본을 바꾸지 않도록 플레이어를 복사해서 작업한다.
+  const players = {};
+  for (const id in state.players) {
+    players[id] = { ...state.players[id] };
+  }
+
+  for (const input of inputs) {
+    const player = players[input.playerId];
+    if (!player) continue;
+
+    if (input.type === 'move') {
+      setMoveTarget(player, input.x, input.y, state.map);
+    }
+  }
+
+  for (const id in players) {
+    movePlayer(players[id], dt, state.map);
+  }
+
   return {
     ...state,
     time: state.time + dt,
     tick: state.tick + 1,
+    players,
   };
 }
