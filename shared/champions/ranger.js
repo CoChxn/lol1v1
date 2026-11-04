@@ -12,13 +12,13 @@ export default {
 
   // 기본 능력치
   maxHp: 600,
-  maxMana: 300,
+  maxMana: 375,
   moveSpeed: 330,
 
   // 기본 공격(평타)
   attack: {
     range: 550,
-    damage: 50,
+    damage: 60,
     attackSpeed: 0.625,
     windupRatio: 0.2,
     projectileSpeed: 1500,
