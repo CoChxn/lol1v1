@@ -39,28 +39,52 @@ const EFFECT_SCHEMAS = {
     speed: { type: 'number', minExclusive: 0 },
     radius: { type: 'number', minExclusive: 0 },
     collision: { type: 'string', oneOf: ['first', 'pierce'] }, // first: 처음 맞은 적만, pierce: 관통
+    targets: { type: 'string', oneOf: ['all', 'champions'], optional: true }, // 맞을 수 있는 대상 (기본 all)
+    shape: { type: 'string', oneOf: ['bolt', 'orb'], optional: true }, // 화면에 그리는 모양 (기본 bolt)
     onHit: { type: 'list', of: 'onHit' },
   },
 };
 
+// 피해 효과 (적중 시·표식이 터질 때 공통)
+const DAMAGE_SCHEMA = {
+  type: { type: 'string' },
+  damageType: { type: 'string', oneOf: ['physical', 'magic', 'true'] },
+  base: { type: 'levels', min: 0 },
+  adRatio: { type: 'number', min: 0, optional: true }, // 총 공격력 계수
+  bonusAdRatio: { type: 'number', min: 0, optional: true }, // 추가 공격력 계수
+  apRatio: { type: 'number', min: 0, optional: true }, // 주문력 계수
+};
+
 // 적중 시 효과 종류별 규칙 (onHit 배열의 원소)
 const ON_HIT_SCHEMAS = {
-  damage: {
-    type: { type: 'string' },
-    damageType: { type: 'string', oneOf: ['physical'] },
-    base: { type: 'levels', min: 0 },
-    adRatio: { type: 'number', min: 0 },
-    apRatio: { type: 'number', min: 0 },
-  },
+  damage: DAMAGE_SCHEMA,
   reduceCooldowns: {
     type: { type: 'string' },
     amount: { type: 'number', min: 0 },
+  },
+  // 표식 부착: 시전자의 평타나 다른 스킬이 맞히면 터진다. 같은 스킬로 다시 맞히면 시간만 갱신
+  applyMark: {
+    type: { type: 'string' },
+    duration: { type: 'number', minExclusive: 0 },
+    onDetonate: { type: 'list', of: 'onDetonate' },
+  },
+};
+
+// 표식이 터질 때 효과 종류별 규칙 (onDetonate 배열의 원소)
+const ON_DETONATE_SCHEMAS = {
+  damage: DAMAGE_SCHEMA,
+  // 시전자 마나 회복: base + (plusTriggerCost면 터뜨린 스킬의 마나 소모량, 평타면 0)
+  restoreMana: {
+    type: { type: 'string' },
+    base: { type: 'number', min: 0 },
+    plusTriggerCost: { type: 'boolean', optional: true },
   },
 };
 
 const LIST_KINDS = {
   effect: EFFECT_SCHEMAS,
   onHit: ON_HIT_SCHEMAS,
+  onDetonate: ON_DETONATE_SCHEMAS,
 };
 
 const SCHEMA = {
@@ -72,6 +96,7 @@ const SCHEMA = {
   maxMana: { type: 'number', min: 0 },
   moveSpeed: { type: 'number', minExclusive: 0 },
   armor: { type: 'number', min: 0 },
+  magicResist: { type: 'number', min: 0 },
   critChance: { type: 'number', min: 0, max: 1 },
   critDamage: { type: 'number', min: 1 },
   attack: {
@@ -122,6 +147,10 @@ function checkFields(data, schema, path, errors) {
         value.length === SKILL_MAX_LEVEL &&
         value.every((v) => typeof v === 'number' && Number.isFinite(v) && (rule.min === undefined || v >= rule.min));
       if (!ok) errors.push(`${where}: 숫자 ${SKILL_MAX_LEVEL}개짜리 배열이어야 합니다${rule.min !== undefined ? ` (각 ${rule.min} 이상)` : ''} (지금: ${JSON.stringify(value)})`);
+      continue;
+    }
+    if (rule.type === 'boolean') {
+      if (typeof value !== 'boolean') errors.push(`${where}: true 또는 false여야 합니다 (지금: ${JSON.stringify(value)})`);
       continue;
     }
     if (rule.type === 'string') {

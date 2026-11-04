@@ -24,6 +24,7 @@ export function drawPlayers(ctx, prevState, state, alpha, myId) {
     const p = state.players[id];
     const { x, y } = lerpPlayerPos(prevState.players[id], p, alpha);
     drawOverhead(ctx, p, x, y, id === myId);
+    drawMarks(ctx, p, x, y);
   }
 }
 
@@ -49,4 +50,32 @@ function drawBody(ctx, prevState, state, alpha, myId, id) {
   ctx.arc(x, y, body, 0, Math.PI * 2);
   ctx.fill();
   ctx.stroke();
+}
+
+/** 캐릭터에 붙은 표식: 체력바 위쪽에 빛나는 구슬 + 남은 시간 */
+function drawMarks(ctx, p, x, y) {
+  if (!p.marks?.length) return;
+  const top = y - p.gameplayRadius - 66;
+  p.marks.forEach((m, i) => {
+    const mx = x + (i - (p.marks.length - 1) / 2) * 34;
+    const pulse = 1 + 0.12 * Math.sin(performance.now() / 120);
+    const r = 11 * pulse;
+    const glow = ctx.createRadialGradient(mx, top, 0, mx, top, r * 1.8);
+    glow.addColorStop(0, 'rgba(255, 255, 255, 0.95)');
+    glow.addColorStop(0.4, 'rgba(255, 200, 80, 0.9)');
+    glow.addColorStop(1, 'rgba(255, 160, 40, 0)');
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(mx, top, r * 1.8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.font = 'bold 11px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#fff';
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.8)';
+    ctx.lineWidth = 3;
+    const label = `${m.skill} ${m.remaining.toFixed(1)}`;
+    ctx.strokeText(label, mx, top - 22);
+    ctx.fillText(label, mx, top - 22);
+    ctx.textAlign = 'start';
+  });
 }

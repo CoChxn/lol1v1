@@ -22,9 +22,13 @@ export function createDamageNumbers() {
   return {
     /** @param {{ amount: number, crit: boolean }} event  @param {{x:number,y:number}} pos 맞은 위치 */
     add(event, pos) {
+      if (event.type === 'manaRestore') {
+        items.push({ x: pos.x, y: pos.y + 20, text: `+${Math.round(event.amount)} 마나`, crit: false, color: '#6cb8ff', small: true, start: performance.now() });
+        return;
+      }
       items.push({
         x: pos.x + (Math.random() - 0.5) * 30, // 겹치지 않게 살짝 흩뿌림 (화면 효과라 Math.random 사용)
-        y: pos.y,
+        y: pos.y - (event.mark ? 26 : 0), // 표식 피해는 같은 순간의 다른 피해와 겹치지 않게 위에
         text: String(Math.round(event.amount)),
         crit: event.crit,
         color: DAMAGE_COLORS[event.damageType] ?? '#ffffff',
@@ -38,7 +42,7 @@ export function createDamageNumbers() {
       ctx.textBaseline = 'middle';
       for (const it of items) {
         const t = (now - it.start) / 1000 / DURATION;
-        const size = it.crit ? 30 : 20;
+        const size = it.crit ? 30 : it.small ? 15 : 20;
         ctx.font = `bold ${size}px sans-serif`;
         ctx.globalAlpha = 1 - t * t;
         ctx.lineWidth = 4;

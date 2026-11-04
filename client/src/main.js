@@ -114,6 +114,9 @@ startLoop({
       if (ev.type === 'damage' && target) {
         renderer.damageNumbers.add(ev, { x: target.x, y: target.y - target.gameplayRadius - 40 });
       }
+      if (ev.type === 'manaRestore' && target && ev.amount > 0) {
+        renderer.damageNumbers.add(ev, { x: target.x, y: target.y - target.gameplayRadius - 40 });
+      }
       renderer.combatLog.add(ev, state);
     }
   },

@@ -4,6 +4,7 @@ import { tickEffects } from './effects.js';
 import { applyDebugInput } from './debug.js';
 import { dummyInputs } from './dummyAI.js';
 import { orderCast, tickSkillCooldowns, updateCasting, updateSkillshot } from './skills.js';
+import { tickMarks } from './marks.js';
 import {
   orderAttack,
   orderAttackMove,
@@ -34,7 +35,7 @@ export function update(state, inputs, dt) {
     // 안쪽 객체(스킬 상태, 시전 정보)도 복사해서 원본을 바꾸지 않는다
     const skills = {};
     for (const key in p.skills) skills[key] = { ...p.skills[key] };
-    players[id] = { ...p, skills, casting: p.casting && { ...p.casting } };
+    players[id] = { ...p, skills, casting: p.casting && { ...p.casting }, marks: p.marks.map((m) => ({ ...m })) };
   }
   let projectiles = state.projectiles.map((p) => ({ ...p }));
   let nextId = state.nextId;
@@ -45,10 +46,11 @@ export function update(state, inputs, dt) {
   // 난수·이벤트 (난수 시드는 다음 상태로 이어진다)
   const ctx = { rng: { seed: state.rngSeed }, events: [] };
 
-  // 0. 지속 효과·스킬 쿨타임 시간 감소
+  // 0. 지속 효과·스킬 쿨타임·표식 시간 감소
   for (const id in players) {
     tickEffects(players[id], dt);
     tickSkillCooldowns(players[id], dt);
+    tickMarks(players[id], dt);
   }
 
   // 1. 입력 처리

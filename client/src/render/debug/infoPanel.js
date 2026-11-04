@@ -20,11 +20,11 @@ function unitLines(label, p) {
   const effects = p.effects.map((e) => `${e.kind} ${e.value} (${e.remaining.toFixed(1)}s)`).join(', ') || '-';
   return [
     `[${label}] ${p.name}  pos ${p.x.toFixed(0)}, ${p.y.toFixed(0)}  ${p.target ? 'moving' : 'still'}`,
-    `  hp ${Math.ceil(p.hp)}/${p.maxHp}  mana ${p.mana}/${p.maxMana}  armor ${p.armor}  crit ${(computeCritChance(p) * 100).toFixed(0)}%`,
+    `  hp ${Math.ceil(p.hp)}/${p.maxHp}  mana ${p.mana}/${p.maxMana}  armor ${p.armor}  MR ${p.magicResist}  crit ${(computeCritChance(p) * 100).toFixed(0)}%`,
     `  move speed ${p.moveSpeed.toFixed(1)} (base ${p.baseMoveSpeed})`,
     `  attack speed ${p.attackSpeed.toFixed(3)} (base ${p.baseAttackSpeed.toFixed(3)})  T ${(1 / p.attackSpeed).toFixed(3)}s  W ${computeWindup(atk, p.attackSpeed, p.baseAttackSpeed).toFixed(3)}s`,
     `  attack [${p.attackState}]${p.attackMoveTarget ? ' attack-move' : ''}  AD ${p.attackDamage}  range ${atk.range} (+${WINDUP_CANCEL_LEEWAY})`,
-    `  skills ${Object.entries(p.skills).map(([k, st]) => `${k} Lv${st.level} cd ${st.cooldown.toFixed(2)}`).join('  ') || '-'}${p.casting ? `  [시전 중 ${p.casting.skill} ${p.casting.remaining.toFixed(2)}s]` : ''}  AP ${p.abilityPower}`,
+    `  skills ${Object.entries(p.skills).map(([k, st]) => `${k} Lv${st.level} cd ${st.cooldown.toFixed(2)}`).join('  ') || '-'}${p.casting ? `  [시전 중 ${p.casting.skill} ${p.casting.remaining.toFixed(2)}s]` : ''}  AP ${p.abilityPower}  bonus AD ${p.attackDamage - p.baseAttackDamage}${p.marks.length ? `  [표식 ${p.marks.map((m) => `${m.skill} ${m.remaining.toFixed(1)}s`).join(', ')}]` : ''}`,
     `  effects ${effects}${p.invulnerable ? '  [무적]' : ''}${p.infiniteMana ? '  [무한 마나]' : ''}${p.isDummy ? `  [행동: ${p.dummyMode}]` : ''}`,
   ];
 }
@@ -51,10 +51,10 @@ export function drawInfoPanel(ctx, state, myId, { fps, combatLog }) {
       10,
       y,
       [
-        '[전투 기록] 시간  공격자 → 대상  원래 피해 × 방어력 배율 = 최종',
+        '[전투 기록] 시간  공격자 → 대상  [무엇으로]  원래 피해 (저항) = 최종',
         ...log.map(
           (e) =>
-            `${e.time.toFixed(2).padStart(7)}s  ${e.source} → ${e.target}  ${e.raw.toFixed(1)} (armor ${e.armor}) = ${e.amount.toFixed(1)}${e.crit ? '  치명타!' : ''}${e.blocked ? '  (무적)' : ''}`,
+            `${e.time.toFixed(2).padStart(7)}s  ${e.source} → ${e.target}  [${e.label}]  ${e.raw.toFixed(1)} (${e.resist}) = ${e.amount.toFixed(1)}${e.crit ? '  치명타!' : ''}${e.blocked ? '  (무적)' : ''}`,
         ),
       ],
       '#fd8',

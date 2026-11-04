@@ -11,6 +11,7 @@ const FIELDS = [
   ['abilityPower', '주문력 (AP)', 1, 1],
   ['baseAttackSpeed', '공격속도 (초당, 0.2~3.003)', 0.05, 3],
   ['armor', '방어력', 1, 1],
+  ['magicResist', '마법 저항력', 1, 1],
   ['critChance', '치명타 확률 (0~1)', 0.05, 2],
   ['critDamage', '치명타 배율', 0.05, 2],
   ['baseMoveSpeed', '기본 이동속도', 5, 0],

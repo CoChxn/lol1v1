@@ -21,6 +21,32 @@ export function physicalDamage(raw, armor) {
 }
 
 /**
+ * 피해 종류별 감소 적용
+ * - physical: 방어력, magic: 마법 저항력 (같은 공식), true(고정): 감소 없음
+ */
+export function mitigate(raw, damageType, target) {
+  if (damageType === 'physical') return raw * armorMultiplier(target.armor);
+  if (damageType === 'magic') return raw * armorMultiplier(target.magicResist);
+  return raw;
+}
+
+/**
+ * 피해 효과의 피해량 (감소 전)
+ *   기본 피해(레벨별) + 총 공격력 × adRatio + 추가 공격력 × bonusAdRatio + 주문력 × apRatio
+ *   추가 공격력 = 총 공격력 − 챔피언 기본 공격력
+ */
+export function damageRaw(player, effect, level) {
+  const base = effect.base[Math.min(Math.max(level, 1), effect.base.length) - 1];
+  const bonusAd = player.attackDamage - player.baseAttackDamage;
+  return (
+    base +
+    player.attackDamage * (effect.adRatio ?? 0) +
+    bonusAd * (effect.bonusAdRatio ?? 0) +
+    player.abilityPower * (effect.apRatio ?? 0)
+  );
+}
+
+/**
  * 시드 기반 난수 (mulberry32). rng 객체의 seed를 바꾸고 0 이상 1 미만의 값을 돌려준다.
  * @param {{ seed: number }} rng
  */
@@ -69,13 +95,15 @@ export function dealAttackDamage(attacker, target, hit, ctx) {
 }
 
 /**
- * 스킬 피해 (물리, 치명타 없음)
+ * 스킬 피해 (치명타 없음)
  * @param {object|undefined} attacker
  * @param {object} target
- * @param {number} raw  방어력 적용 전 피해
+ * @param {number} raw  감소 전 피해
+ * @param {string} damageType  'physical' | 'magic' | 'true'
  * @param {string} skill  스킬 키 (예: 'Q')
+ * @param {object} [extra]  이벤트에 덧붙일 정보 (예: { mark: true })
  */
-export function dealSkillDamage(attacker, target, raw, skill, ctx) {
-  const amount = applyDamage(target, physicalDamage(raw, target.armor));
-  ctx.events.push({ type: 'damage', damageType: 'physical', targetId: target.id, sourceId: attacker?.id ?? null, raw, amount, crit: false, skill });
+export function dealSkillDamage(attacker, target, raw, damageType, skill, ctx, extra = {}) {
+  const amount = applyDamage(target, mitigate(raw, damageType, target));
+  ctx.events.push({ type: 'damage', damageType, targetId: target.id, sourceId: attacker?.id ?? null, raw, amount, crit: false, skill, ...extra });
 }

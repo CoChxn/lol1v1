@@ -11,6 +11,19 @@ export function drawProjectiles(ctx, prevState, state, alpha) {
     const team = proj.team ?? owner?.team;
     const color = team === 'red' ? '255, 120, 90' : '120, 200, 255';
 
+    if (proj.kind === 'skillshot' && proj.shape === 'orb') {
+      // 구체: 둥근 빛 덩어리
+      const glow = ctx.createRadialGradient(x, y, 0, x, y, proj.radius * 1.4);
+      glow.addColorStop(0, 'rgba(255, 255, 255, 0.95)');
+      glow.addColorStop(0.35, `rgba(${color}, 0.85)`);
+      glow.addColorStop(1, `rgba(${color}, 0)`);
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(x, y, proj.radius * 1.4, 0, Math.PI * 2);
+      ctx.fill();
+      continue;
+    }
+
     if (proj.kind === 'skillshot') {
       // 직선 투사체: 진행 방향으로 길쭉한 빛 화살
       ctx.save();

@@ -59,5 +59,41 @@ export default {
         },
       ],
     },
+    // W 공명 구체: 방향 지정 + 일반 발동 + 투사체(처음 맞은 챔피언) → 표식 4초
+    //   표식이 붙은 대상을 시전자의 평타나 다른 스킬로 맞히면 터지면서 마법 피해 + 마나 회복
+    W: {
+      name: '공명 구체',
+      manaCost: [50, 50, 50, 50, 50],
+      cooldown: [8, 8, 8, 8, 8],
+      targeting: {
+        type: 'direction',
+        range: 1150,
+        outOfRange: 'maxRange',
+      },
+      activation: { type: 'normal', castTime: 0.25 },
+      effects: [
+        {
+          type: 'projectile',
+          speed: 1700,
+          radius: 50,
+          collision: 'first',
+          targets: 'champions',
+          shape: 'orb',
+          onHit: [
+            {
+              type: 'applyMark',
+              duration: 4,
+              onDetonate: [
+                { type: 'damage', damageType: 'magic', base: [80, 135, 190, 245, 300], bonusAdRatio: 1, apRatio: 0.9 },
+                { type: 'restoreMana', base: 60, plusTriggerCost: true },
+              ],
+            },
+          ],
+        },
+      ],
+    },
   },
+
+  // 마법 방어
+  magicResist: 33,
 };

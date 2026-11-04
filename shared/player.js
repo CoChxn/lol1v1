@@ -33,6 +33,7 @@ export function createPlayer({ id, name, team, x, y, championId = DEFAULT_CHAMPI
     mana: champ.maxMana,
     maxMana: champ.maxMana,
     armor: champ.armor, // 방어력
+    magicResist: champ.magicResist ?? 0, // 마법 저항력
     critChance: champ.critChance, // 기본 치명타 확률 (0~1)
     critDamage: champ.critDamage, // 치명타 피해 배율
     // 이동 목표 지점. null이면 정지.
@@ -43,7 +44,8 @@ export function createPlayer({ id, name, team, x, y, championId = DEFAULT_CHAMPI
     attackMoveTarget: null, // 어택땅 목적지 {x, y}. 이동하면서 사거리 안의 적을 찾는다
     attackWindupTargetId: null, // 지금 선딜레이 중인 평타의 대상 ID
     abilityPower: 0, // 주문력 (AP)
-    attackDamage: champ.attack.damage, // 공격력(AD). 챔피언 값으로 시작 (아이템 등으로 바뀔 수 있음)
+    baseAttackDamage: champ.attack.damage, // 기본 공격력 (챔피언 값). 추가 공격력 = attackDamage − baseAttackDamage
+    attackDamage: champ.attack.damage, // 총 공격력(AD). 챔피언 값으로 시작 (아이템 등으로 바뀔 수 있음)
     baseAttackSpeed: champ.attack.attackSpeed, // 기본 공격속도 (b). 챔피언 값으로 시작
     bonusAttackSpeed: 0, // 추가 공격속도 (효과와 별개의 고정 보너스, 예: +0.5 = +50%. 아이템용)
     attackSpeed: champ.attack.attackSpeed, // 총 공격속도. 매 틱 효과를 반영해 다시 계산한다
@@ -57,6 +59,8 @@ export function createPlayer({ id, name, team, x, y, championId = DEFAULT_CHAMPI
     noCooldown: false, // [개발자 모드] true면 스킬 쿨타임이 돌지 않는다
     skills: createSkillStates(champ), // 스킬 상태 { Q: { level, cooldown } }
     casting: null, // 시전 중인 스킬 { skill, dirX, dirY, remaining }
+    unitType: 'champion', // 유닛 종류 (나중에 'minion', 'monster' 등)
+    marks: [], // 이 캐릭터에 붙은 표식 [{ ownerId, skill, remaining }] (marks.js)
     infiniteMana: false, // true면 마나가 줄지 않는다
     dummyMode: 'idle', // [허수아비] 'idle' | 'patrol' | 'attack' (dummyAI.js)
     patrolAnchor: isDummy ? { x, y } : null, // [허수아비] 왔다 갔다 기준 위치

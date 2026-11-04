@@ -7,14 +7,16 @@
 // 구현된 축:
 // - 조준: direction (마우스 방향, 사거리 밖이면 최대 사거리로)
 // - 발동: normal (+ 시전 시간)
-// - 효과: projectile (collision: first | pierce) → 적중 시 onHit: damage(physical), reduceCooldowns
+// - 효과: projectile (collision: first | pierce, targets: all | champions)
+//         → 적중 시 onHit: damage(physical·magic·true), reduceCooldowns, applyMark(표식, marks.js)
 //
 // player·projectile은 update에서 복사한 객체라 직접 바꿔도 된다.
 import { getChampion } from './champions/index.js';
 import { SKILL_KEYS, SKILL_MAX_LEVEL } from './champions/validate.js';
 import { spendMana } from './combat.js';
 import { cancelWindup } from './attack.js';
-import { dealSkillDamage } from './damage.js';
+import { dealSkillDamage, damageRaw } from './damage.js';
+import { applyMark, triggerMarks } from './marks.js';
 
 const EPSILON = 1e-6;
 
@@ -96,11 +98,6 @@ export function reduceAllCooldowns(player, amount) {
   }
 }
 
-/** 피해 효과의 피해량 (방어력 적용 전): 기본 + 총 공격력 × AD 계수 + 주문력 × AP 계수 */
-export function damageRaw(player, effect, level) {
-  return levelValue(effect.base, level) + player.attackDamage * effect.adRatio + player.abilityPower * effect.apRatio;
-}
-
 /**
  * 적중 시 효과 목록을 발동 시점 값으로 고정한다 (피해량은 시전자의 그 순간 스탯 기준).
  * 방어력은 맞는 순간 대상의 값으로 계산한다.
@@ -113,11 +110,14 @@ function snapshotOnHit(player, onHit, level) {
 }
 
 /** 적중 시 효과 적용 */
-function applyOnHit(owner, target, onHit, skill, ctx) {
-  for (const e of onHit) {
-    if (e.type === 'damage') dealSkillDamage(owner, target, e.raw, skill, ctx);
+function applyOnHit(proj, owner, target, ctx) {
+  for (const e of proj.onHit) {
+    if (e.type === 'damage') dealSkillDamage(owner, target, e.raw, e.damageType, proj.skill, ctx);
     else if (e.type === 'reduceCooldowns' && owner) reduceAllCooldowns(owner, e.amount);
+    else if (e.type === 'applyMark') applyMark(proj.ownerId, target, proj.skill, e.duration);
   }
+  // 이 스킬로 시전자의 표식이 터진다 (같은 스킬의 표식은 제외)
+  triggerMarks(owner, target, { by: 'skill', skill: proj.skill, manaCost: proj.manaCost }, ctx);
 }
 
 // --- 3. 효과: 발동 순간 실행. 투사체 효과는 새 투사체를 돌려준다 ---
@@ -135,6 +135,9 @@ const EFFECTS = {
       speed: effect.speed,
       radius: effect.radius,
       collision: effect.collision,
+      targets: effect.targets ?? 'all',
+      shape: effect.shape ?? 'bolt',
+      manaCost: levelValue(data.manaCost, level), // 표식을 터뜨릴 때 마나 회복 계산용
       remaining: data.targeting.range, // 남은 비행 거리
       hitIds: [], // 관통 투사체가 이미 맞힌 대상
       onHit: snapshotOnHit(player, effect.onHit, level),
@@ -195,6 +198,7 @@ export function updateSkillshot(proj, players, dt, ctx) {
   for (const id in players) {
     const p = players[id];
     if (p.team === proj.team || p.hp <= 0 || p.targetable === false || proj.hitIds.includes(id)) continue;
+    if (proj.targets === 'champions' && p.unitType !== 'champion') continue; // 챔피언만 맞는 투사체는 다른 유닛을 통과
     const { t, dist } = closestOnSegment(p.x, p.y, ax, ay, bx, by);
     if (dist <= p.gameplayRadius + proj.radius) hits.push({ p, t });
   }
@@ -202,11 +206,11 @@ export function updateSkillshot(proj, players, dt, ctx) {
 
   const owner = players[proj.ownerId];
   if (hits.length && proj.collision === 'first') {
-    applyOnHit(owner, hits[0].p, proj.onHit, proj.skill, ctx);
+    applyOnHit(proj, owner, hits[0].p, ctx);
     return false;
   }
   for (const { p } of hits) {
-    applyOnHit(owner, p, proj.onHit, proj.skill, ctx);
+    applyOnHit(proj, owner, p, ctx);
     proj.hitIds = [...proj.hitIds, p.id];
   }
 

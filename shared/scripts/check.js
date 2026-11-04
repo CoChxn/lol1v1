@@ -265,6 +265,7 @@ if (!failed) {
       const proj = data.effects.find((e) => e.type === 'projectile');
       if (data.targeting.type !== 'direction' || !proj) continue;
       const dmg = proj.onHit.find((e) => e.type === 'damage');
+      if (!dmg) continue; // 적중 시 피해가 없는 스킬(예: 표식만 붙이는 스킬)은 아래 표식 검사에서 확인
       const cdr = proj.onHit.find((e) => e.type === 'reduceCooldowns')?.amount ?? 0;
       try {
         const cast = (s, x, y) => step(s, [{ playerId: 'a', type: 'cast', skill: key, x, y }]);
@@ -323,7 +324,88 @@ if (!failed) {
     }
   }
 
-  // 9. 근접 평타: 투사체 없이 즉시 적중 (검사용 임시 챔피언)
+  // 9. 표식 스킬: 부착(피해 없음), 같은 스킬로 갱신, 평타·다른 스킬로 터짐(피해 + 마나 회복), 시간 만료, 챔피언만
+  for (const id in CHAMPIONS) {
+    for (const key in CHAMPIONS[id].skills ?? {}) {
+      const data = CHAMPIONS[id].skills[key];
+      const proj = data.effects.find((e) => e.type === 'projectile');
+      const markSpec = proj?.onHit.find((e) => e.type === 'applyMark');
+      if (!markSpec) continue;
+      try {
+        const dmg = markSpec.onDetonate.find((e) => e.type === 'damage');
+        const mana = markSpec.onDetonate.find((e) => e.type === 'restoreMana');
+        const noCd = (s) => ({ ...s, players: { ...s.players, a: { ...s.players.a, noCooldown: true } } });
+        const run = (s, n) => {
+          const evs = [];
+          for (let i = 0; i < n; i++) {
+            s = step(s);
+            evs.push(...s.events);
+          }
+          return { s, evs };
+        };
+        const { blue } = createGameState().map.spawns;
+        const castAt = (s, k) => step(s, [{ playerId: 'a', type: 'cast', skill: k, x: blue.x + 1000, y: blue.y }]);
+
+        // 부착: 피해 없이 표식만
+        let s = noCd(duel(id, 400));
+        let r = run(castAt(s, key), 30);
+        const mark = r.s.players.b.marks.find((m) => m.ownerId === 'a' && m.skill === key);
+        if (!mark) throw new Error('표식이 붙지 않았습니다');
+        if (r.s.players.b.hp !== r.s.players.b.maxHp) throw new Error('구체가 맞는 순간 피해가 들어갔습니다');
+        // 같은 스킬로 다시 맞히면 갱신만 (터지지 않음)
+        r = run(castAt(r.s, key), 30);
+        if (r.evs.some((e) => e.type === 'markDetonate')) throw new Error('같은 스킬로 맞혔는데 표식이 터졌습니다');
+        if (!(r.s.players.b.marks[0]?.remaining > markSpec.duration - 1)) throw new Error('같은 스킬로 맞혔는데 표식 시간이 갱신되지 않았습니다');
+
+        // 평타로 터짐: 마법 피해 + 마나 회복(평타는 마나 소모 0)
+        s = { ...r.s, players: { ...r.s.players, a: { ...r.s.players.a, mana: 100 } } };
+        r = run(step(s, [attackB]), 60);
+        const det = r.evs.find((e) => e.type === 'damage' && e.mark);
+        if (!det) throw new Error('평타로 표식이 터지지 않았습니다');
+        const a = r.s.players.a;
+        const expectRaw = dmg.base[0] + (a.attackDamage - a.baseAttackDamage) * (dmg.bonusAdRatio ?? 0) + a.attackDamage * (dmg.adRatio ?? 0) + a.abilityPower * (dmg.apRatio ?? 0);
+        if (Math.abs(det.raw - expectRaw) > 1e-9 || det.damageType !== dmg.damageType) throw new Error(`표식 피해가 다릅니다 (${det.raw})`);
+        const target = r.s.players.b;
+        const expectAmount = dmg.damageType === 'magic' ? physicalDamage(expectRaw, target.magicResist) : physicalDamage(expectRaw, target.armor);
+        if (Math.abs(det.amount - expectAmount) > 1e-9) throw new Error(`표식 피해의 저항 적용이 다릅니다 (${det.amount}, 예상 ${expectAmount})`);
+        const restored = r.evs.filter((e) => e.type === 'manaRestore').reduce((n, e) => n + e.amount, 0);
+        if (mana && restored !== mana.base) throw new Error(`평타로 터뜨렸을 때 마나 회복이 다릅니다 (${restored})`);
+        if (r.s.players.b.marks.length) throw new Error('터진 뒤에도 표식이 남아 있습니다');
+
+        // 다른 스킬로 터짐: 그 스킬 피해 + 표식 피해 + 마나 (base + 그 스킬 마나 소모량)
+        const otherKey = Object.keys(CHAMPIONS[id].skills).find((k) => k !== key && CHAMPIONS[id].skills[k].effects.some((e) => e.type === 'projectile' && e.onHit.some((h) => h.type === 'damage')));
+        if (otherKey) {
+          s = noCd(duel(id, 400));
+          r = run(castAt(s, key), 30);
+          s = { ...r.s, players: { ...r.s.players, a: { ...r.s.players.a, mana: 100 } } };
+          r = run(castAt(s, otherKey), 30);
+          const kinds = r.evs.filter((e) => e.type === 'damage').map((e) => (e.mark ? 'mark' : e.skill));
+          if (kinds.join(',') !== `${otherKey},mark`) throw new Error(`다른 스킬로 맞혔을 때 순서가 다릅니다 (${kinds.join(',')})`);
+          const cost = CHAMPIONS[id].skills[otherKey].manaCost[0];
+          const got = r.evs.filter((e) => e.type === 'manaRestore').reduce((n, e) => n + e.amount, 0);
+          if (mana && got !== mana.base + (mana.plusTriggerCost ? cost : 0)) throw new Error(`스킬로 터뜨렸을 때 마나 회복이 다릅니다 (${got})`);
+        }
+
+        // 시간이 지나면 사라짐
+        s = noCd(duel(id, 400));
+        r = run(castAt(s, key), Math.ceil((markSpec.duration + 1) * 30));
+        if (r.s.players.b.marks.length) throw new Error('표식 시간이 지나도 남아 있습니다');
+
+        // 챔피언만 맞는 투사체는 다른 유닛을 통과
+        if (proj.targets === 'champions') {
+          s = noCd(duel(id, 600));
+          s = addPlayer(s, { ...createPlayer({ id: 'm', name: 'M', team: 'red', x: blue.x + 300, y: blue.y, championId: id, isDummy: true }), unitType: 'minion' });
+          r = run(castAt(s, key), 30);
+          if (r.s.players.m.marks.length || !r.s.players.b.marks.length) throw new Error('챔피언이 아닌 유닛을 통과하지 않았습니다');
+        }
+        console.log(`✓ ${id} ${key} ${data.name} (표식 부착·갱신, 평타·${otherKey ?? '-'}로 터짐: ${dmg.damageType} 피해 + 마나 회복, ${markSpec.duration}초 만료${proj.targets === 'champions' ? ', 챔피언만' : ''})`);
+      } catch (e) {
+        fail(`${id} ${key} 표식 스킬: ${e.message}`);
+      }
+    }
+  }
+
+  // 10. 근접 평타: 투사체 없이 즉시 적중 (검사용 임시 챔피언)
   try {
     const base = CHAMPIONS[Object.keys(CHAMPIONS)[0]];
     CHAMPIONS.__melee = { ...base, attack: { type: 'melee', range: 125, damage: 10, attackSpeed: 1, windupRatio: 0.25 } };

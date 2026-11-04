@@ -17,6 +17,7 @@
 import { getChampion } from './champions/index.js';
 import { setMoveTarget } from './movement.js';
 import { rollCrit, dealAttackDamage } from './damage.js';
+import { triggerMarks } from './marks.js';
 import { TICK_DT } from './constants.js';
 
 // 소수점 오차로 타이머가 한 틱 더 남는 것을 막기 위한 여유값
@@ -251,6 +252,7 @@ export function updateAttack(player, players, map, dt, ctx) {
         const hit = { raw: player.attackDamage, crit: rollCrit(player, ctx.rng), critDamage: player.critDamage };
         if (atk.type === 'melee') {
           dealAttackDamage(player, target, hit, ctx); // 근접: 즉시 적중
+          triggerMarks(player, target, { by: 'attack' }, ctx);
         } else {
           shot = {
             kind: 'attack',
@@ -304,6 +306,7 @@ export function updateProjectile(proj, players, dt, ctx) {
   // 원-원 충돌
   if (Math.hypot(target.x - proj.x, target.y - proj.y) < proj.radius + target.gameplayRadius) {
     dealAttackDamage(players[proj.ownerId], target, proj.hit, ctx);
+    triggerMarks(players[proj.ownerId], target, { by: 'attack' }, ctx);
     return false;
   }
   return true;

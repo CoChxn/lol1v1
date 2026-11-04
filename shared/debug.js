@@ -19,6 +19,7 @@ export const DEBUG_STATS = {
   baseAttackSpeed: { min: 0.2, max: () => 3.003 },
   bonusAttackSpeed: { min: -1 },
   armor: {},
+  magicResist: {},
   critChance: { min: 0, max: () => 1 },
   critDamage: { min: 1 },
   baseMoveSpeed: { min: 0 },
