@@ -51,7 +51,7 @@ export function canAttack(attacker, target) {
  */
 export function computeAttackSpeed(player) {
   const atk = getChampion(player.championId).attack;
-  const base = atk.attackSpeed;
+  const base = player.baseAttackSpeed ?? atk.attackSpeed;
   const ratio = atk.attackSpeedRatio ?? base;
   let bonus = player.bonusAttackSpeed ?? 0;
   for (const e of player.effects) {
@@ -65,11 +65,12 @@ export function computeAttackSpeed(player) {
  * 선딜레이 시간: W = W0 + k × (T × p − W0)
  *   T = 1 / 총 공격속도, p = windupRatio, W0 = p / 기본 공격속도, k = windupModifier(기본 1)
  *   k = 1이면 W = T × p
+ * @param {number} [baseAttackSpeed]  기본 공격속도 (기본값: 챔피언 데이터 값)
  */
-export function computeWindup(atk, attackSpeed) {
+export function computeWindup(atk, attackSpeed, baseAttackSpeed = atk.attackSpeed) {
   const p = atk.windupRatio;
   const k = atk.windupModifier ?? 1;
-  const w0 = p / atk.attackSpeed;
+  const w0 = p / baseAttackSpeed;
   return w0 + k * ((1 / attackSpeed) * p - w0);
 }
 
@@ -213,7 +214,7 @@ export function updateAttack(player, players, map, dt, ctx) {
       player.target = null;
       if (player.attackTimer <= EPSILON) {
         const attackTime = 1 / player.attackSpeed;
-        const windup = computeWindup(atk, player.attackSpeed);
+        const windup = computeWindup(atk, player.attackSpeed, player.baseAttackSpeed);
         player.attackTimer = attackTime;
         player.attackTimerTotal = attackTime;
         player.attackWindup = windup;

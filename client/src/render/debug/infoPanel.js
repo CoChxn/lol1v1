@@ -22,7 +22,7 @@ function unitLines(label, p) {
     `[${label}] ${p.name}  pos ${p.x.toFixed(0)}, ${p.y.toFixed(0)}  ${p.target ? 'moving' : 'still'}`,
     `  hp ${Math.ceil(p.hp)}/${p.maxHp}  mana ${p.mana}/${p.maxMana}  armor ${p.armor}  crit ${(computeCritChance(p) * 100).toFixed(0)}%`,
     `  move speed ${p.moveSpeed.toFixed(1)} (base ${p.baseMoveSpeed})`,
-    `  attack speed ${p.attackSpeed.toFixed(3)} (bonus ${(p.bonusAttackSpeed * 100).toFixed(0)}%)  T ${(1 / p.attackSpeed).toFixed(3)}s  W ${computeWindup(atk, p.attackSpeed).toFixed(3)}s`,
+    `  attack speed ${p.attackSpeed.toFixed(3)} (base ${p.baseAttackSpeed.toFixed(3)})  T ${(1 / p.attackSpeed).toFixed(3)}s  W ${computeWindup(atk, p.attackSpeed, p.baseAttackSpeed).toFixed(3)}s`,
     `  attack [${p.attackState}]${p.attackMoveTarget ? ' attack-move' : ''}  AD ${p.attackDamage}  range ${atk.range} (+${WINDUP_CANCEL_LEEWAY})`,
     `  effects ${effects}`,
   ];

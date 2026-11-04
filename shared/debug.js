@@ -11,6 +11,7 @@ export const DEBUG_STATS = {
   mana: { min: 0, max: (p) => p.maxMana },
   maxMana: { min: 0 },
   attackDamage: { min: 0 },
+  baseAttackSpeed: { min: 0.2, max: () => 3.003 },
   bonusAttackSpeed: { min: -1 },
   armor: {},
   critChance: { min: 0, max: () => 1 },
