@@ -97,8 +97,7 @@ export function update(state, inputs, dt) {
 
   // 2-1. 스킬 시전 진행 (시전 시간이 끝나면 발동)
   for (const id in players) {
-    const shot = updateCasting(players[id], dt);
-    if (shot) projectiles.push({ id: nextId++, ...shot });
+    for (const shot of updateCasting(players[id], dt)) projectiles.push({ id: nextId++, ...shot });
   }
 
   // 3. 이동

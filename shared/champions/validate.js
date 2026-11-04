@@ -1,29 +1,66 @@
 // 챔피언 데이터 검사. (개발 세션 담당: 챔피언에 새 항목을 추가하면 SCHEMA에도 추가한다)
-// 각 규칙: { type: 'number' | 'string' | 'object' | 'levels' | 'skills', min, max, minExclusive, fields, optional, oneOf }
+// 각 규칙: { type: 'number' | 'string' | 'object' | 'levels' | 'list' | 'skills', min, max, minExclusive, fields, optional, oneOf, of }
 // levels: 레벨별 숫자 배열 (길이 SKILL_MAX_LEVEL)
-// skills: { Q, W, E, R } 각각 스킬 형태(type)별 규칙으로 검사
+// list: 종류(type)별 규칙이 다른 객체 배열 (of: 'effect' | 'onHit')
+// skills: { Q, W, E, R } 각각 SKILL_SCHEMA로 검사
 // optional: true면 적지 않아도 된다 (코드에서 기본값 사용)
 
 export const SKILL_MAX_LEVEL = 5;
 export const SKILL_KEYS = ['Q', 'W', 'E', 'R'];
 
-// 스킬 형태별 규칙
-const SKILL_SCHEMAS = {
-  linearProjectile: {
-    name: { type: 'string' },
-    type: { type: 'string', oneOf: ['linearProjectile'] },
-    range: { type: 'number', minExclusive: 0 },
-    projectileSpeed: { type: 'number', minExclusive: 0 },
-    projectileRadius: { type: 'number', minExclusive: 0 },
-    castTime: { type: 'number', min: 0 },
-    manaCost: { type: 'levels', min: 0 },
-    cooldown: { type: 'levels', min: 0 },
-    damage: { type: 'levels', min: 0 },
+// 스킬 규칙: 조준(targeting) / 발동(activation) / 효과(effects) 세 축 (docs/SKILL_DESIGN.md)
+// 구현된 값만 허용한다. 새 방식을 구현하면 oneOf와 아래 규칙에 추가한다.
+const SKILL_SCHEMA = {
+  name: { type: 'string' },
+  manaCost: { type: 'levels', min: 0 },
+  cooldown: { type: 'levels', min: 0 },
+  targeting: {
+    type: 'object',
+    fields: {
+      type: { type: 'string', oneOf: ['direction'] },
+      range: { type: 'number', minExclusive: 0 },
+      outOfRange: { type: 'string', oneOf: ['maxRange'] },
+    },
+  },
+  activation: {
+    type: 'object',
+    fields: {
+      type: { type: 'string', oneOf: ['normal'] },
+      castTime: { type: 'number', min: 0 },
+    },
+  },
+  effects: { type: 'list', of: 'effect' },
+};
+
+// 효과 종류별 규칙 (effects 배열의 원소)
+const EFFECT_SCHEMAS = {
+  projectile: {
+    type: { type: 'string' },
+    speed: { type: 'number', minExclusive: 0 },
+    radius: { type: 'number', minExclusive: 0 },
+    collision: { type: 'string', oneOf: ['first', 'pierce'] }, // first: 처음 맞은 적만, pierce: 관통
+    onHit: { type: 'list', of: 'onHit' },
+  },
+};
+
+// 적중 시 효과 종류별 규칙 (onHit 배열의 원소)
+const ON_HIT_SCHEMAS = {
+  damage: {
+    type: { type: 'string' },
+    damageType: { type: 'string', oneOf: ['physical'] },
+    base: { type: 'levels', min: 0 },
     adRatio: { type: 'number', min: 0 },
     apRatio: { type: 'number', min: 0 },
-    damageType: { type: 'string', oneOf: ['physical'] },
-    onHitCooldownReduction: { type: 'number', min: 0, optional: true },
   },
+  reduceCooldowns: {
+    type: { type: 'string' },
+    amount: { type: 'number', min: 0 },
+  },
+};
+
+const LIST_KINDS = {
+  effect: EFFECT_SCHEMAS,
+  onHit: ON_HIT_SCHEMAS,
 };
 
 const SCHEMA = {
@@ -71,6 +108,10 @@ function checkFields(data, schema, path, errors) {
       checkFields(value, rule.fields, where, errors);
       continue;
     }
+    if (rule.type === 'list') {
+      checkList(value, LIST_KINDS[rule.of], where, errors);
+      continue;
+    }
     if (rule.type === 'skills') {
       checkSkills(value, where, errors);
       continue;
@@ -102,6 +143,23 @@ function checkFields(data, schema, path, errors) {
   }
 }
 
+/** 종류(type)별 규칙이 다른 객체 배열 검사 */
+function checkList(list, schemas, path, errors) {
+  if (!Array.isArray(list) || list.length === 0) {
+    errors.push(`${path}: 비어 있지 않은 배열이어야 합니다`);
+    return;
+  }
+  list.forEach((item, i) => {
+    const where = `${path}[${i}]`;
+    const schema = schemas[item?.type];
+    if (!schema) {
+      errors.push(`${where}.type: ${Object.keys(schemas).join(' / ')} 중 하나여야 합니다 (지금: ${item?.type})`);
+      return;
+    }
+    checkFields(item, schema, where, errors);
+  });
+}
+
 function checkSkills(skills, path, errors) {
   if (typeof skills !== 'object' || skills === null) {
     errors.push(`${path}: 객체여야 합니다`);
@@ -113,12 +171,7 @@ function checkSkills(skills, path, errors) {
       errors.push(`${where}: 스킬 키는 ${SKILL_KEYS.join(' / ')} 중 하나여야 합니다`);
       continue;
     }
-    const schema = SKILL_SCHEMAS[skills[key]?.type];
-    if (!schema) {
-      errors.push(`${where}.type: ${Object.keys(SKILL_SCHEMAS).join(' / ')} 중 하나여야 합니다 (지금: ${skills[key]?.type})`);
-      continue;
-    }
-    checkFields(skills[key], schema, where, errors);
+    checkFields(skills[key], SKILL_SCHEMA, where, errors);
   }
 }
 

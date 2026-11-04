@@ -258,11 +258,14 @@ if (!failed) {
     fail(`개발자 모드 기능: ${e.message}`);
   }
 
-  // 8. 스킬 (직선 투사체): 시전 조건, 마나·쿨타임, 처음 맞은 적만, 피해 공식, 적중 시 쿨타임 감소
+  // 8. 스킬 (방향 지정 + 투사체): 시전 조건, 마나·쿨타임, 충돌 방식, 피해 공식, 적중 시 쿨타임 감소
   for (const id in CHAMPIONS) {
     for (const key in CHAMPIONS[id].skills ?? {}) {
       const data = CHAMPIONS[id].skills[key];
-      if (data.type !== 'linearProjectile') continue;
+      const proj = data.effects.find((e) => e.type === 'projectile');
+      if (data.targeting.type !== 'direction' || !proj) continue;
+      const dmg = proj.onHit.find((e) => e.type === 'damage');
+      const cdr = proj.onHit.find((e) => e.type === 'reduceCooldowns')?.amount ?? 0;
       try {
         const cast = (s, x, y) => step(s, [{ playerId: 'a', type: 'cast', skill: key, x, y }]);
         const firstSkillHit = (s) => {
@@ -290,19 +293,22 @@ if (!failed) {
         const cdBeforeHit = s.players.a.skills[key].cooldown;
         let r = firstSkillHit(s);
         if (!r.ev) throw new Error('앞에 있는 적을 맞히지 못했습니다');
-        const raw = data.damage[0] + s.players.a.attackDamage * data.adRatio;
-        if (Math.abs(r.ev.amount - physicalDamage(raw, s.players.b.armor)) > 1e-9) throw new Error(`피해가 공식과 다릅니다 (${r.ev.amount})`);
+        const raw = dmg ? dmg.base[0] + s.players.a.attackDamage * dmg.adRatio : 0;
+        if (dmg && Math.abs(r.ev.amount - physicalDamage(raw, s.players.b.armor)) > 1e-9) throw new Error(`피해가 공식과 다릅니다 (${r.ev.amount})`);
         const elapsed = r.s.time - s.time;
-        const expectCd = Math.max(0, cdBeforeHit - elapsed - (data.onHitCooldownReduction ?? 0));
+        const expectCd = Math.max(0, cdBeforeHit - elapsed - cdr);
         if (Math.abs(r.s.players.a.skills[key].cooldown - expectCd) > 1e-6) throw new Error(`적중 시 쿨타임 감소가 다릅니다 (${r.s.players.a.skills[key].cooldown.toFixed(3)}, 예상 ${expectCd.toFixed(3)})`);
-        // 처음 맞은 적만: 일직선에 적 둘 → 가까운 적만 피해
+        // 충돌 방식: 일직선에 적 둘 → first면 앞의 적만, pierce면 둘 다
         s = duel(id, 400);
         s = addPlayer(s, createPlayer({ id: 'c', name: 'C', team: 'red', x: blue.x + 700, y: blue.y, championId: id, isDummy: true }));
         r = firstSkillHit(cast(s, blue.x + 1000, blue.y));
         for (let i = 0; i < 30; i++) r.s = step(r.s);
-        if (r.s.players.b.hp === r.s.players.b.maxHp || r.s.players.c.hp !== r.s.players.c.maxHp) throw new Error('처음 맞은 적 하나만 맞아야 합니다');
+        const bHit = r.s.players.b.hp < r.s.players.b.maxHp;
+        const cHit = r.s.players.c.hp < r.s.players.c.maxHp;
+        if (proj.collision === 'first' && !(bHit && !cHit)) throw new Error('처음 맞은 적 하나만 맞아야 합니다');
+        if (proj.collision === 'pierce' && !(bHit && cHit)) throw new Error('관통 투사체가 두 적을 모두 맞혀야 합니다');
         // 사거리 밖 적은 맞지 않고 투사체가 사라진다
-        s = duel(id, data.range + 300);
+        s = duel(id, data.targeting.range + 300);
         r = firstSkillHit(cast(s, blue.x + 5000, blue.y));
         if (r.ev || r.s.projectiles.length) throw new Error('사거리 밖의 적을 맞혔거나 투사체가 사라지지 않았습니다');
         // 마나 부족이면 시전 불가
@@ -310,7 +316,7 @@ if (!failed) {
         s = { ...s, players: { ...s.players, a: { ...s.players.a, mana: data.manaCost[0] - 1 } } };
         s = cast(s, blue.x + 1000, blue.y);
         if (s.players.a.casting) throw new Error('마나가 부족한데 시전되었습니다');
-        console.log(`✓ ${id} ${key} ${data.name} (마나·쿨타임, 시전 시간, 피해 ${r.ev ? '' : ''}공식, 적중 시 쿨타임 -${data.onHitCooldownReduction ?? 0}초, 첫 적중만, 사거리, 마나 부족)`);
+        console.log(`✓ ${id} ${key} ${data.name} (방향 지정 + ${data.activation.type} + 투사체 ${proj.collision}: 마나·쿨타임, 시전 시간, 피해 공식, 적중 시 쿨타임 -${cdr}초, 사거리, 마나 부족)`);
       } catch (e) {
         fail(`${id} ${key} 스킬: ${e.message}`);
       }

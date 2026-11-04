@@ -60,13 +60,38 @@
 
 ---
 
+## 데이터 형식
+
+챔피언 파일(`shared/champions/<챔피언>.js`)의 `skills.<키>`에 세 축을 그대로 적는다. 항목 설명은 `docs/CHAMPION_STATS.md`.
+
+```js
+Q: {
+  name: '비전 화살',
+  manaCost: [28, 31, 34, 37, 40],
+  cooldown: [5.5, 5.25, 5, 4.75, 4.5],
+  targeting: { type: 'direction', range: 1150, outOfRange: 'maxRange' },   // 1. 조준
+  activation: { type: 'normal', castTime: 0.25 },                           // 2. 발동
+  effects: [                                                                 // 3. 효과
+    {
+      type: 'projectile', speed: 2000, radius: 30, collision: 'first',
+      onHit: [
+        { type: 'damage', damageType: 'physical', base: [20, 45, 70, 95, 120], adRatio: 1.3, apRatio: 0.4 },
+        { type: 'reduceCooldowns', amount: 1.5 },
+      ],
+    },
+  ],
+}
+```
+
+- 새 조준·발동·효과 종류를 구현하면 `shared/skills.js`(로직), `shared/champions/validate.js`(검사 규칙), `docs/CHAMPION_STATS.md`(설명), 아래 구현 현황을 함께 고친다.
+
 ## 이 게임의 구현 현황
 
 | 축 | 구현됨 | 아직 |
 |---|---|---|
 | 조준 | 방향 | 자동, 위치, 대상, 벡터, 근접, 패시브 |
 | 발동 | 일반 (+ 시전 시간) | 토글, 재시전, 충전, 정신 집중, 탄약 |
-| 효과 | 투사체(처음 맞은 적만), 물리 피해, 시전자 스킬 쿨타임 감소 | 관통, 마법·고정 피해, 범위, 돌진, 순간이동, 군중 제어, 버프·디버프, 보호막 등 |
+| 효과 | 투사체(처음 맞은 적만 / 관통), 물리 피해, 시전자 스킬 쿨타임 감소 | 마법·고정 피해, 범위, 돌진, 순간이동, 군중 제어, 버프·디버프, 보호막 등 |
 
 **스킬 목록**
 

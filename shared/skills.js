@@ -1,11 +1,13 @@
-// 스킬 로직 (공통 시스템 + 스킬 형태별 처리).
-// - 입력: { type: 'cast', skill: 'Q', x, y }  (x, y: 마우스 월드 좌표 → 방향)
+// 스킬 로직. 스킬은 조준(targeting) / 발동(activation) / 효과(effects) 세 축의 조합이다 (docs/SKILL_DESIGN.md).
+// - 입력: { type: 'cast', skill: 'Q', x, y }  (x, y: 마우스 월드 좌표)
 // - 시전 조건: 살아 있음, 스킬 레벨 1 이상, 쿨타임 0, 마나 충분, 다른 스킬 시전 중 아님
-// - 시전하면 마나 소모·쿨타임 시작 → 시전 시간(castTime) 동안 멈춰 섬 → 효과 발동
+// - 시전하면 마나 소모·쿨타임 시작 → 시전 시간(activation.castTime) 동안 멈춰 섬 → 효과 발동
 // - 시전 중에는 이동·평타를 하지 않는다. 시전이 끝나면 하던 이동·평타 명령을 이어 간다.
 //
-// 스킬 형태:
-// - linearProjectile: 마우스 방향으로 최대 사거리까지 날아가는 투사체. 처음 닿은 적 하나에게 피해 (원-선분 충돌)
+// 구현된 축:
+// - 조준: direction (마우스 방향, 사거리 밖이면 최대 사거리로)
+// - 발동: normal (+ 시전 시간)
+// - 효과: projectile (collision: first | pierce) → 적중 시 onHit: damage(physical), reduceCooldowns
 //
 // player·projectile은 update에서 복사한 객체라 직접 바꿔도 된다.
 import { getChampion } from './champions/index.js';
@@ -50,21 +52,32 @@ export function castBlockReason(player, key) {
   return null;
 }
 
+// --- 1. 조준: 입력을 시전 정보로 바꾼다 (실패하면 null) ---
+const TARGETING = {
+  // 방향: 마우스 방향의 단위 벡터. 사거리와 무관하게 방향만 쓴다 (outOfRange: 'maxRange')
+  direction(player, targeting, x, y) {
+    const dx = x - player.x;
+    const dy = y - player.y;
+    const len = Math.hypot(dx, dy);
+    if (!(len > 0)) return null;
+    return { dirX: dx / len, dirY: dy / len };
+  },
+};
+
 /** 스킬 시전 명령 */
 export function orderCast(player, key, x, y) {
   if (castBlockReason(player, key)) return;
-  const dx = x - player.x;
-  const dy = y - player.y;
-  const len = Math.hypot(dx, dy);
-  if (!(len > 0)) return;
-
   const data = getSkillData(player, key);
+  const aim = TARGETING[data.targeting.type]?.(player, data.targeting, x, y);
+  if (!aim) return;
+
   const st = player.skills[key];
   spendMana(player, levelValue(data.manaCost, st.level));
   if (!player.noCooldown) st.cooldown = levelValue(data.cooldown, st.level);
   // 평타 선딜레이 중이었다면 취소된다 (스킬 시전도 다른 명령)
   cancelWindup(player);
-  player.casting = { skill: key, dirX: dx / len, dirY: dy / len, remaining: data.castTime };
+  // 2. 발동: normal → 시전 시간 뒤 효과 발동
+  player.casting = { skill: key, ...aim, remaining: data.activation.castTime };
 }
 
 /** 매 틱 스킬 쿨타임 감소 */
@@ -83,46 +96,75 @@ export function reduceAllCooldowns(player, amount) {
   }
 }
 
-/** 스킬 피해량 (방어력 적용 전): 기본 + 총 공격력 × AD 계수 + 주문력 × AP 계수 */
-export function skillRawDamage(player, data, level) {
-  return levelValue(data.damage, level) + player.attackDamage * data.adRatio + player.abilityPower * data.apRatio;
+/** 피해 효과의 피해량 (방어력 적용 전): 기본 + 총 공격력 × AD 계수 + 주문력 × AP 계수 */
+export function damageRaw(player, effect, level) {
+  return levelValue(effect.base, level) + player.attackDamage * effect.adRatio + player.abilityPower * effect.apRatio;
 }
 
 /**
- * 시전 진행. 시전 시간이 끝나면 효과를 발동하고, 새 투사체가 있으면 돌려준다.
- * @returns {object|null} 새 투사체(아이디 없음)
+ * 적중 시 효과 목록을 발동 시점 값으로 고정한다 (피해량은 시전자의 그 순간 스탯 기준).
+ * 방어력은 맞는 순간 대상의 값으로 계산한다.
+ */
+function snapshotOnHit(player, onHit, level) {
+  return onHit.map((e) => {
+    if (e.type === 'damage') return { type: 'damage', damageType: e.damageType, raw: damageRaw(player, e, level) };
+    return { ...e };
+  });
+}
+
+/** 적중 시 효과 적용 */
+function applyOnHit(owner, target, onHit, skill, ctx) {
+  for (const e of onHit) {
+    if (e.type === 'damage') dealSkillDamage(owner, target, e.raw, skill, ctx);
+    else if (e.type === 'reduceCooldowns' && owner) reduceAllCooldowns(owner, e.amount);
+  }
+}
+
+// --- 3. 효과: 발동 순간 실행. 투사체 효과는 새 투사체를 돌려준다 ---
+const EFFECTS = {
+  projectile(player, effect, cast, data, level) {
+    return {
+      kind: 'skillshot',
+      skill: cast.skill,
+      ownerId: player.id,
+      team: player.team,
+      x: player.x, // 시전 시간이 끝나는 순간 시전자가 있는 위치에서 발사
+      y: player.y,
+      dirX: cast.dirX,
+      dirY: cast.dirY,
+      speed: effect.speed,
+      radius: effect.radius,
+      collision: effect.collision,
+      remaining: data.targeting.range, // 남은 비행 거리
+      hitIds: [], // 관통 투사체가 이미 맞힌 대상
+      onHit: snapshotOnHit(player, effect.onHit, level),
+    };
+  },
+};
+
+/**
+ * 시전 진행. 시전 시간이 끝나면 효과를 발동하고, 새 투사체 목록을 돌려준다.
+ * @returns {object[]} 새 투사체들(아이디 없음)
  */
 export function updateCasting(player, dt) {
   const c = player.casting;
-  if (!c) return null;
+  if (!c) return [];
   if (player.hp <= 0) {
     player.casting = null;
-    return null;
+    return [];
   }
   c.remaining -= dt;
-  if (c.remaining > EPSILON) return null;
+  if (c.remaining > EPSILON) return [];
 
   player.casting = null;
   const data = getSkillData(player, c.skill);
   const level = player.skills[c.skill].level;
-  if (data.type === 'linearProjectile') {
-    return {
-      kind: 'skillshot',
-      skill: c.skill,
-      ownerId: player.id,
-      team: player.team,
-      x: player.x,
-      y: player.y,
-      dirX: c.dirX,
-      dirY: c.dirY,
-      speed: data.projectileSpeed,
-      radius: data.projectileRadius,
-      remaining: data.range, // 남은 비행 거리
-      raw: skillRawDamage(player, data, level),
-      onHitCooldownReduction: data.onHitCooldownReduction ?? 0,
-    };
+  const spawned = [];
+  for (const effect of data.effects) {
+    const out = EFFECTS[effect.type]?.(player, effect, c, data, level);
+    if (out) spawned.push(out);
   }
-  return null;
+  return spawned;
 }
 
 /** 점(px, py)에서 선분(ax,ay)-(bx,by)까지 가장 가까운 지점의 비율 t (0~1)와 거리 */
@@ -137,7 +179,9 @@ function closestOnSegment(px, py, ax, ay, bx, by) {
 }
 
 /**
- * 직선 투사체(skillshot) 이동과 적중. 이번 틱 이동 경로(선분)에 닿는 적 중 가장 먼저 닿는 적 하나에게 적중.
+ * 스킬 투사체(skillshot) 이동과 적중 (원-선분 충돌: 이번 틱 이동 경로에 닿는 적).
+ * - collision 'first': 가장 먼저 닿는 적 하나에게 적중하고 사라짐
+ * - collision 'pierce': 닿는 적 모두에게 한 번씩 적중하고 계속 날아감
  * @returns {boolean} 투사체를 계속 유지할지 (false면 제거)
  */
 export function updateSkillshot(proj, players, dt, ctx) {
@@ -147,27 +191,32 @@ export function updateSkillshot(proj, players, dt, ctx) {
   const bx = ax + proj.dirX * step;
   const by = ay + proj.dirY * step;
 
-  let hit = null;
-  let hitT = Infinity;
+  const hits = [];
   for (const id in players) {
     const p = players[id];
-    if (p.team === proj.team || p.hp <= 0 || p.targetable === false) continue;
+    if (p.team === proj.team || p.hp <= 0 || p.targetable === false || proj.hitIds.includes(id)) continue;
     const { t, dist } = closestOnSegment(p.x, p.y, ax, ay, bx, by);
-    if (dist <= p.gameplayRadius + proj.radius && t < hitT) {
-      hit = p;
-      hitT = t;
-    }
+    if (dist <= p.gameplayRadius + proj.radius) hits.push({ p, t });
   }
+  hits.sort((a, b) => a.t - b.t);
 
-  if (hit) {
-    const owner = players[proj.ownerId];
-    dealSkillDamage(owner, hit, proj.raw, proj.skill, ctx);
-    if (owner && proj.onHitCooldownReduction > 0) reduceAllCooldowns(owner, proj.onHitCooldownReduction);
+  const owner = players[proj.ownerId];
+  if (hits.length && proj.collision === 'first') {
+    applyOnHit(owner, hits[0].p, proj.onHit, proj.skill, ctx);
     return false;
+  }
+  for (const { p } of hits) {
+    applyOnHit(owner, p, proj.onHit, proj.skill, ctx);
+    proj.hitIds = [...proj.hitIds, p.id];
   }
 
   proj.x = bx;
   proj.y = by;
   proj.remaining -= step;
   return proj.remaining > EPSILON;
+}
+
+/** [화면용] 스킬의 첫 투사체 효과 (범위 표시에 사용). 없으면 null */
+export function getProjectileEffect(data) {
+  return data.effects.find((e) => e.type === 'projectile') ?? null;
 }
