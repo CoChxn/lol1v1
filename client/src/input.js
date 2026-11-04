@@ -129,7 +129,7 @@ export function setupInput(
   });
 
   // [개발자 모드] 숫자 테스트 키
-  const DEBUG_KEYS = { 1: 'damage', 2: 'spendMana', 3: 'restoreAll', 4: 'slow', 5: 'haste', 6: 'attackSpeed', 7: 'crit' };
+  const DEBUG_KEYS = { 1: 'damage', 2: 'spendMana', 3: 'restoreAll', 4: 'slow', 5: 'haste', 6: 'attackSpeed', 7: 'crit', 9: 'toggleNoCooldown' };
 
   window.addEventListener('keydown', (e) => {
     if (e.repeat) return;

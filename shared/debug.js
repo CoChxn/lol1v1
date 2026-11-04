@@ -98,4 +98,8 @@ export function applyDebugInput(players, player, input, map) {
   else if (action === 'haste') addEffect(target, { kind: 'percent', value: 0.5, duration: 3 });
   else if (action === 'attackSpeed') addEffect(target, { kind: 'attackSpeed', value: 1, duration: 3 });
   else if (action === 'crit') addEffect(target, { kind: 'critChance', value: 1, duration: 3 });
+  else if (action === 'toggleNoCooldown') {
+    target.noCooldown = !target.noCooldown;
+    if (target.noCooldown) for (const k in target.skills) target.skills[k].cooldown = 0;
+  }
 }
