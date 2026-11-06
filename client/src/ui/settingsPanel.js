@@ -34,10 +34,10 @@ export function createSettingsPanel(settings) {
   title.textContent = '스킬 입력 방식';
   panel.appendChild(title);
 
-  for (const key of ['Q', 'W', 'E', 'R']) {
-    const row = document.createElement('label');
-    const name = document.createElement('span');
-    name.textContent = key;
+  const KEYS = ['Q', 'W', 'E', 'R'];
+  const keySelects = {};
+
+  function makeCastSelect() {
     const select = document.createElement('select');
     for (const mode in CAST_MODES) {
       const option = document.createElement('option');
@@ -45,14 +45,49 @@ export function createSettingsPanel(settings) {
       option.textContent = CAST_MODES[mode];
       select.appendChild(option);
     }
-    select.value = settings.getCastMode(key);
+    return select;
+  }
+
+  // 전체: 고르면 모든 키를 한 번에 바꾼다. 키별 방식이 다르면 "(키별로 다름)"
+  const allRow = document.createElement('label');
+  const allName = document.createElement('span');
+  allName.textContent = '전체';
+  allName.style.fontWeight = 'bold';
+  const allSelect = makeCastSelect();
+  const mixed = document.createElement('option');
+  mixed.value = 'mixed';
+  mixed.textContent = '(키별로 다름)';
+  mixed.disabled = true;
+  allSelect.prepend(mixed);
+  allSelect.addEventListener('change', () => {
+    for (const key of KEYS) settings.setCastMode(key, allSelect.value);
+    refreshCastSelects();
+    allSelect.blur();
+  });
+  allRow.append(allName, allSelect);
+  panel.appendChild(allRow);
+
+  for (const key of KEYS) {
+    const row = document.createElement('label');
+    const name = document.createElement('span');
+    name.textContent = key;
+    const select = makeCastSelect();
     select.addEventListener('change', () => {
       settings.setCastMode(key, select.value);
+      refreshCastSelects();
       select.blur();
     });
     row.append(name, select);
     panel.appendChild(row);
+    keySelects[key] = select;
   }
+
+  function refreshCastSelects() {
+    const modes = KEYS.map((k) => settings.getCastMode(k));
+    for (const key of KEYS) keySelects[key].value = settings.getCastMode(key);
+    allSelect.value = modes.every((m) => m === modes[0]) ? modes[0] : 'mixed';
+  }
+  refreshCastSelects();
 
   const hint = document.createElement('div');
   hint.className = 'hint';
