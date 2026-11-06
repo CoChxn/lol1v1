@@ -18,7 +18,7 @@ const SKILL_SCHEMA = {
   targeting: {
     type: 'object',
     fields: {
-      type: { type: 'string', oneOf: ['direction'] },
+      type: { type: 'string', oneOf: ['direction', 'location'] },
       range: { type: 'number', minExclusive: 0 },
       outOfRange: { type: 'string', oneOf: ['maxRange'] },
     },
@@ -45,6 +45,18 @@ const EFFECT_SCHEMAS = {
     shape: { type: 'string', oneOf: ['bolt', 'orb'], optional: true }, // 화면에 그리는 모양 (기본 bolt)
     onHit: { type: 'list', of: 'onHit' },
   },
+  // 순간이동: 조준한 위치로 즉시 이동 (위치 지정 스킬, 거리 = targeting.range)
+  blink: {
+    type: { type: 'string' },
+  },
+  // 유도 투사체: 시전자 위치(순간이동 뒤라면 도착 위치) 기준 acquireRadius 안의 적을 골라 따라가서 맞힌다
+  homingProjectile: {
+    type: { type: 'string' },
+    speed: { type: 'number', minExclusive: 0 },
+    acquireRadius: { type: 'number', minExclusive: 0 },
+    priority: { type: 'string', oneOf: ['nearest', 'markedFirst'] }, // markedFirst: 내 표식이 붙은 적 우선
+    onHit: { type: 'list', of: 'onHit' },
+  },
 };
 
 // 피해 효과 (적중 시·표식이 터질 때 공통)
@@ -63,6 +75,11 @@ const ON_HIT_SCHEMAS = {
   reduceCooldowns: {
     type: { type: 'string' },
     amount: { type: 'number', min: 0 },
+  },
+  // 시야 밝히기 (시야 기능이 생기면 동작. 지금은 대상에 시간만 기록)
+  reveal: {
+    type: { type: 'string' },
+    duration: { type: 'number', minExclusive: 0 },
   },
   // 표식 부착: 시전자의 평타나 다른 스킬이 맞히면 터진다. 같은 스킬로 다시 맞히면 시간만 갱신
   applyMark: {

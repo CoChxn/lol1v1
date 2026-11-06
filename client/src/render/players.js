@@ -7,8 +7,12 @@ const TEAM_COLORS = {
 };
 
 /** 두 상태 사이의 플레이어 위치 (alpha: 0이면 prev, 1이면 curr) */
+// 한 틱에 이보다 멀리 움직였으면 순간이동으로 보고 보간하지 않는다 (가장 빠른 이동도 한 틱에 수십 정도)
+const TELEPORT_DISTANCE = 150;
+
 export function lerpPlayerPos(prev, curr, alpha) {
   if (!prev) return { x: curr.x, y: curr.y };
+  if (Math.hypot(curr.x - prev.x, curr.y - prev.y) > TELEPORT_DISTANCE) return { x: curr.x, y: curr.y };
   return {
     x: prev.x + (curr.x - prev.x) * alpha,
     y: prev.y + (curr.y - prev.y) * alpha,

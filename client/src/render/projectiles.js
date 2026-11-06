@@ -11,7 +11,7 @@ export function drawProjectiles(ctx, prevState, state, alpha) {
     const team = proj.team ?? owner?.team;
     const color = team === 'red' ? '255, 120, 90' : '120, 200, 255';
 
-    if (proj.kind === 'skillshot') {
+    if (proj.kind === 'skillshot' || proj.kind === 'homingSkill') {
       // 스킬 투사체: 판정(히트박스)과 똑같은 크기의 원으로 그린다
       //   orb(예: W): 노란색 / bolt(예: Q): 팀 색
       const fill = proj.shape === 'orb' ? '255, 210, 60' : color;
@@ -24,8 +24,8 @@ export function drawProjectiles(ctx, prevState, state, alpha) {
       ctx.fill();
       ctx.stroke();
       // 진행 방향 표시: 원 안쪽 앞부분에 밝은 점 (원 밖으로 나가지 않음)
-      const hx = x + proj.dirX * r * 0.45;
-      const hy = y + proj.dirY * r * 0.45;
+      const hx = x + (proj.dirX ?? 0) * r * 0.45;
+      const hy = y + (proj.dirY ?? 0) * r * 0.45;
       const core = ctx.createRadialGradient(hx, hy, 0, hx, hy, r * 0.5);
       core.addColorStop(0, 'rgba(255, 255, 255, 0.95)');
       core.addColorStop(1, `rgba(${fill}, 0)`);

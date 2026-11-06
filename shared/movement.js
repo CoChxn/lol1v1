@@ -131,3 +131,29 @@ export function movePlayer(player, players, dt, map) {
   player.y = clamped.y;
   if (arrived) player.target = null;
 }
+
+/**
+ * 순간이동 등으로 다른 캐릭터와 몸(이동 충돌 반경)이 겹치면 바로 바깥으로 밀어낸다.
+ * (dirX, dirY): 완전히 겹쳤을 때 밀어낼 방향
+ */
+export function resolveOverlap(player, players, map, dirX = 1, dirY = 0) {
+  for (const id in players) {
+    const other = players[id];
+    if (!blocks(player, other)) continue;
+    const minDist = player.pathingRadius + other.pathingRadius;
+    let ox = player.x - other.x;
+    let oy = player.y - other.y;
+    let od = Math.hypot(ox, oy);
+    if (od >= minDist) continue;
+    if (od === 0) {
+      ox = dirX;
+      oy = dirY;
+      od = Math.hypot(ox, oy) || 1;
+    }
+    player.x = other.x + (ox / od) * minDist;
+    player.y = other.y + (oy / od) * minDist;
+  }
+  const clamped = clampToMap(player.x, player.y, player.pathingRadius, map);
+  player.x = clamped.x;
+  player.y = clamped.y;
+}

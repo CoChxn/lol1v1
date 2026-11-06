@@ -516,7 +516,101 @@ if (!failed) {
     }
   }
 
-  // 11. 근접 평타: 투사체 없이 즉시 적중 (검사용 임시 챔피언)
+  // 11. 위치 지정 + 순간이동 → 유도 투사체 스킬
+  for (const id in CHAMPIONS) {
+    for (const key in CHAMPIONS[id].skills ?? {}) {
+      const data = CHAMPIONS[id].skills[key];
+      const homing = data.effects.find((e) => e.type === 'homingProjectile');
+      if (data.targeting.type !== 'location' || !data.effects.some((e) => e.type === 'blink')) continue;
+      try {
+        const range = data.targeting.range;
+        const run = (s, n) => {
+          const evs = [];
+          for (let i = 0; i < n; i++) {
+            s = step(s);
+            evs.push(...s.events);
+          }
+          return { s, evs };
+        };
+        const patch = (s, pid, p) => ({ ...s, players: { ...s.players, [pid]: { ...s.players[pid], ...p } } });
+        const castAt = (s, x, y) => step(s, [{ playerId: 'a', type: 'cast', skill: key, x, y }]);
+        const until = (s) => {
+          while (s.players.a.casting) s = step(s);
+          return s;
+        };
+        // 상대를 멀리 둔 기본 상태 (사거리 밖이라 투사체가 안 나감)
+        const far = () => {
+          let s = duel(id, 100);
+          return patch(s, 'b', { x: 4000, y: 2400 });
+        };
+        const start = far().players.a;
+
+        // 사거리 밖 클릭 → 그 방향으로 최대 사거리
+        let s = until(castAt(far(), start.x + 1000, start.y));
+        if (Math.abs(s.players.a.x - (start.x + range)) > 1e-6) throw new Error(`사거리 밖 클릭인데 ${(s.players.a.x - start.x).toFixed(1)}만큼 이동했습니다 (예상 ${range})`);
+        if (s.projectiles.length) throw new Error('범위 안에 적이 없는데 투사체가 나갔습니다');
+        // 사거리 안 클릭 → 그 지점
+        s = until(castAt(far(), start.x + 300, start.y));
+        if (Math.abs(s.players.a.x - (start.x + 300)) > 1e-6) throw new Error('사거리 안 클릭 지점으로 이동하지 않았습니다');
+        // 벽 쪽 → 가장 가까운 벽 밖
+        s = until(castAt(patch(far(), 'a', { x: 100 }), -500, start.y));
+        if (s.players.a.x !== s.players.a.pathingRadius) throw new Error(`벽 밖으로 나갔습니다 (${s.players.a.x})`);
+        // 시전 중 밀리면 그 위치 기준으로 다시 계산
+        s = castAt(far(), start.x + 300, start.y);
+        s = patch(s, 'a', { x: start.x + 100 });
+        s = until(s);
+        if (Math.abs(s.players.a.x - (start.x + 300)) > 1e-6) throw new Error('시전 중 밀린 위치 기준으로 다시 계산되지 않았습니다');
+
+        if (homing) {
+          const { blue } = createGameState().map.spawns;
+          // 대상 우선순위: 내 표식이 붙은 적 우선, 없으면 가장 가까운 적
+          const twoEnemies = (markB) => {
+            let t = duel(id, 600);
+            t = addPlayer(t, createPlayer({ id: 'c', name: 'C', team: 'red', x: blue.x + 300, y: blue.y + 200, championId: id, isDummy: true }));
+            if (markB) t = patch(t, 'b', { marks: [{ ownerId: 'a', skill: 'X', remaining: 5 }] });
+            return t;
+          };
+          const firstTarget = (t) => {
+            t = castAt(t, blue.x, blue.y + 1);
+            while (t.players.a.casting) t = step(t);
+            return t.projectiles.find((p) => p.kind === 'homingSkill')?.targetId;
+          };
+          if (firstTarget(twoEnemies(false)) !== 'c') throw new Error('표식이 없을 때 가장 가까운 적을 고르지 않았습니다');
+          if (homing.priority === 'markedFirst' && firstTarget(twoEnemies(true)) !== 'b') throw new Error('표식이 붙은 적을 우선하지 않았습니다');
+          // 범위 밖 적에게는 나가지 않는다
+          let t = patch(duel(id, 100), 'b', { x: blue.x + homing.acquireRadius + 200 });
+          t = until(castAt(t, blue.x, blue.y + 1));
+          if (t.projectiles.length) throw new Error('찾는 범위 밖의 적에게 투사체가 나갔습니다');
+          // 피해 공식 (추가 공격력 반영)
+          const dmg = homing.onHit.find((e) => e.type === 'damage');
+          t = patch(duel(id, 500), 'a', { attackDamage: start.attackDamage + 40 });
+          let r = run(castAt(t, blue.x, blue.y + 1), 60);
+          const ev = r.evs.find((e) => e.type === 'damage' && e.skill === key);
+          if (!ev) throw new Error('유도 투사체가 맞지 않았습니다');
+          const raw = dmg.base[0] + 40 * (dmg.bonusAdRatio ?? 0) + (start.attackDamage + 40) * (dmg.adRatio ?? 0);
+          if (Math.abs(ev.raw - raw) > 1e-9 || ev.damageType !== dmg.damageType) throw new Error(`피해가 공식과 다릅니다 (${ev.raw}, 예상 ${raw})`);
+          if (homing.onHit.some((e) => e.type === 'reveal') && !(r.s.players.b.revealed >= 0)) throw new Error('시야 기록이 없습니다');
+          // 다른 스킬의 표식을 터뜨린다: 마나 = 표식의 base + 이 스킬 마나 소모량
+          const markKey = Object.keys(CHAMPIONS[id].skills).find((k) => CHAMPIONS[id].skills[k].effects.some((e) => e.onHit?.some((h) => h.type === 'applyMark')));
+          if (markKey) {
+            t = patch(duel(id, 500), 'b', { marks: [{ ownerId: 'a', skill: markKey, remaining: 3 }] });
+            t = patch(t, 'a', { mana: 100 });
+            r = run(castAt(t, blue.x, blue.y + 1), 60);
+            const restored = r.evs.filter((e) => e.type === 'manaRestore').reduce((n, e) => n + e.amount, 0);
+            const markSpec = CHAMPIONS[id].skills[markKey].effects.flatMap((e) => e.onHit ?? []).find((h) => h.type === 'applyMark');
+            const manaSpec = markSpec.onDetonate.find((e) => e.type === 'restoreMana');
+            if (!r.evs.some((e) => e.type === 'markDetonate')) throw new Error(`${markKey} 표식이 터지지 않았습니다`);
+            if (manaSpec && restored !== manaSpec.base + data.manaCost[0]) throw new Error(`표식을 터뜨렸을 때 마나 회복이 다릅니다 (${restored})`);
+          }
+        }
+        console.log(`✓ ${id} ${key} ${data.name} (위치 지정: 최대 ${range}·사거리 안·벽·시전 중 밀림${homing ? ` / 유도 투사체: 우선순위 ${homing.priority}, 범위 ${homing.acquireRadius}, 대상 없으면 안 나감, 피해 공식, 표식 터뜨림` : ''})`);
+      } catch (e) {
+        fail(`${id} ${key} 스킬: ${e.message}`);
+      }
+    }
+  }
+
+  // 12. 근접 평타: 투사체 없이 즉시 적중 (검사용 임시 챔피언)
   try {
     const base = CHAMPIONS[Object.keys(CHAMPIONS)[0]];
     CHAMPIONS.__melee = { ...base, attack: { type: 'melee', range: 125, damage: 10, attackSpeed: 1, windupRatio: 0.25 } };

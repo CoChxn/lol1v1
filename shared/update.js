@@ -2,7 +2,7 @@
 import { movePlayer, computeMoveSpeed } from './movement.js';
 import { tickEffects } from './effects.js';
 import { dummyInputs } from './dummyAI.js';
-import { tickSkillCooldowns, updateCasting, updateSkillshot } from './skills.js';
+import { tickSkillCooldowns, updateCasting, updateSkillshot, updateHomingSkill } from './skills.js';
 import { tickMarks } from './marks.js';
 import { submitCommand, runQueuedCommands } from './commands.js';
 import { updateAttack, updateAttackMove, updateProjectile, computeAttackSpeed } from './attack.js';
@@ -40,6 +40,7 @@ export function update(state, inputs, dt) {
     tickEffects(players[id], dt);
     tickSkillCooldowns(players[id], dt);
     tickMarks(players[id], dt);
+    if (players[id].revealed > 0) players[id].revealed = Math.max(0, players[id].revealed - dt);
   }
 
   // 1. 선입력 → 새 입력 처리 (commands.js: 행동 불가 중 선입력 / 쿨타임 선입력)
@@ -64,7 +65,7 @@ export function update(state, inputs, dt) {
   // 2. 스킬 시전 진행 (시전 시간이 끝나면 발동하고, 그 틱에 바로 시전 중 선입력을 실행)
   for (const id in players) {
     const wasCasting = !!players[id].casting;
-    for (const shot of updateCasting(players[id], dt)) projectiles.push({ id: nextId++, ...shot });
+    for (const shot of updateCasting(players[id], dt, players, state.map)) projectiles.push({ id: nextId++, ...shot });
     if (wasCasting && !players[id].casting) runQueuedCommands(players, players[id], state.map);
   }
 
@@ -81,9 +82,11 @@ export function update(state, inputs, dt) {
   }
 
   // 4. 투사체 이동·적중
-  projectiles = projectiles.filter((proj) =>
-    proj.kind === 'skillshot' ? updateSkillshot(proj, players, dt, ctx) : updateProjectile(proj, players, dt, ctx),
-  );
+  projectiles = projectiles.filter((proj) => {
+    if (proj.kind === 'skillshot') return updateSkillshot(proj, players, dt, ctx);
+    if (proj.kind === 'homingSkill') return updateHomingSkill(proj, players, dt, ctx);
+    return updateProjectile(proj, players, dt, ctx);
+  });
 
   return {
     ...state,

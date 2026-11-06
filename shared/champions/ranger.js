@@ -94,6 +94,33 @@ export default {
         },
       ],
     },
+    // E 섬광 도약: 위치 지정 + 일반 발동 + 순간이동(최대 475) → 도착 지점 기준 750 안의 적에게 유도 투사체
+    //   대상 우선순위: 내 표식이 붙은 적 중 가장 가까운 적 → 없으면 가장 가까운 적. 대상이 없으면 순간이동만
+    E: {
+      name: '섬광 도약',
+      queueTime: 0.5,
+      manaCost: [70, 70, 70, 70, 70],
+      cooldown: [26, 23, 20, 17, 14],
+      targeting: {
+        type: 'location',
+        range: 475,
+        outOfRange: 'maxRange',
+      },
+      activation: { type: 'normal', castTime: 0.25 },
+      effects: [
+        { type: 'blink' },
+        {
+          type: 'homingProjectile',
+          speed: 2000,
+          acquireRadius: 750,
+          priority: 'markedFirst',
+          onHit: [
+            { type: 'damage', damageType: 'magic', base: [80, 130, 180, 230, 280], bonusAdRatio: 0.5, apRatio: 0.75 },
+            { type: 'reveal', duration: 1 },
+          ],
+        },
+      ],
+    },
   },
 
   // 마법 방어

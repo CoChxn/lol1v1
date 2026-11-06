@@ -6,9 +6,12 @@
 //
 // 구현된 축:
 // - 조준: direction (마우스 방향, 사거리 밖이면 최대 사거리로)
+//         location (땅 클릭, 사거리 밖이면 그 방향으로 최대 사거리 지점)
 // - 발동: normal (+ 시전 시간)
-// - 효과: projectile (collision: first | pierce, targets: all | champions)
-//         → 적중 시 onHit: damage(physical·magic·true), reduceCooldowns, applyMark(표식, marks.js)
+// - 효과: projectile (직선, collision: first | pierce, targets: all | champions)
+//         blink (조준한 위치로 순간이동)
+//         homingProjectile (자동 대상 선택 → 유도 투사체)
+//         → 적중 시 onHit: damage(physical·magic·true), reduceCooldowns, applyMark(표식, marks.js), reveal(시야)
 //
 // player·projectile은 update에서 복사한 객체라 직접 바꿔도 된다.
 import { getChampion } from './champions/index.js';
@@ -16,6 +19,7 @@ import { SKILL_KEYS, SKILL_MAX_LEVEL } from './champions/validate.js';
 import { spendMana } from './combat.js';
 import { cancelWindup } from './attack.js';
 import { dealSkillDamage, damageRaw } from './damage.js';
+import { clampToMap, resolveOverlap } from './movement.js';
 import { applyMark, triggerMarks } from './marks.js';
 
 const EPSILON = 1e-6;
@@ -63,6 +67,15 @@ const TARGETING = {
     const len = Math.hypot(dx, dy);
     if (!(len > 0)) return null;
     return { dirX: dx / len, dirY: dy / len };
+  },
+  // 위치: 땅 클릭 지점. 사거리 밖이면 그 방향으로 최대 사거리 지점 (outOfRange: 'maxRange')
+  // 실제 효과 위치는 발동 순간 시전자 위치에서 이 지점 쪽으로 다시 계산한다 (시전 중 밀려도 최대 사거리 유지)
+  location(player, targeting, x, y) {
+    const dx = x - player.x;
+    const dy = y - player.y;
+    const len = Math.hypot(dx, dy);
+    if (len <= targeting.range) return { tx: x, ty: y };
+    return { tx: player.x + (dx / len) * targeting.range, ty: player.y + (dy / len) * targeting.range };
   },
 };
 
@@ -115,13 +128,73 @@ function applyOnHit(proj, owner, target, ctx) {
     if (e.type === 'damage') dealSkillDamage(owner, target, e.raw, e.damageType, proj.skill, ctx);
     else if (e.type === 'reduceCooldowns' && owner) reduceAllCooldowns(owner, e.amount);
     else if (e.type === 'applyMark') applyMark(proj.ownerId, target, proj.skill, e.duration);
+    else if (e.type === 'reveal') target.revealed = Math.max(target.revealed ?? 0, e.duration);
   }
   // 이 스킬로 시전자의 표식이 터진다 (같은 스킬의 표식은 제외)
   triggerMarks(owner, target, { by: 'skill', skill: proj.skill, manaCost: proj.manaCost }, ctx);
 }
 
+/**
+ * 유도 투사체의 대상 고르기: 시전자 위치에서 acquireRadius 안(대상 가장자리 기준)의 적
+ * - nearest: 가장 가까운 적
+ * - markedFirst: 시전자의 표식이 붙은 적 중 가장 가까운 적 → 없으면 가장 가까운 적
+ */
+export function pickHomingTarget(player, players, effect) {
+  let best = null;
+  let bestDist = Infinity;
+  let bestMarked = false;
+  for (const id in players) {
+    const p = players[id];
+    if (p.team === player.team || p.hp <= 0 || p.targetable === false) continue;
+    const d = Math.hypot(p.x - player.x, p.y - player.y);
+    if (d - p.gameplayRadius > effect.acquireRadius) continue;
+    const marked = effect.priority === 'markedFirst' && p.marks.some((m) => m.ownerId === player.id);
+    if ((marked && !bestMarked) || (marked === bestMarked && d < bestDist)) {
+      best = p;
+      bestDist = d;
+      bestMarked = marked;
+    }
+  }
+  return best;
+}
+
 // --- 3. 효과: 발동 순간 실행. 투사체 효과는 새 투사체를 돌려준다 ---
 const EFFECTS = {
+  // 순간이동: 발동 순간 위치에서 조준 지점 쪽으로 최대 사거리까지. 벽 안이면 가장 가까운 벽 밖, 다른 캐릭터와 겹치면 밀어냄
+  blink(player, effect, cast, data, level, players, map) {
+    const dx = cast.tx - player.x;
+    const dy = cast.ty - player.y;
+    const len = Math.hypot(dx, dy);
+    const dist = Math.min(len, data.targeting.range);
+    const dirX = len > 0 ? dx / len : 1;
+    const dirY = len > 0 ? dy / len : 0;
+    const dest = clampToMap(player.x + dirX * dist, player.y + dirY * dist, player.pathingRadius, map);
+    player.x = dest.x;
+    player.y = dest.y;
+    resolveOverlap(player, players, map, dirX, dirY);
+    player.target = null; // 가던 이동은 멈춘다 (평타 명령은 유지)
+    return null;
+  },
+
+  // 유도 투사체: 대상이 없으면 나가지 않는다
+  homingProjectile(player, effect, cast, data, level, players) {
+    const target = pickHomingTarget(player, players, effect);
+    if (!target) return null;
+    return {
+      kind: 'homingSkill',
+      skill: cast.skill,
+      ownerId: player.id,
+      team: player.team,
+      x: player.x,
+      y: player.y,
+      targetId: target.id,
+      speed: effect.speed,
+      radius: 12, // 그리기용 (적중은 대상 판정 원에 닿을 때)
+      manaCost: levelValue(data.manaCost, level),
+      onHit: snapshotOnHit(player, effect.onHit, level),
+    };
+  },
+
   projectile(player, effect, cast, data, level) {
     return {
       kind: 'skillshot',
@@ -149,7 +222,7 @@ const EFFECTS = {
  * 시전 진행. 시전 시간이 끝나면 효과를 발동하고, 새 투사체 목록을 돌려준다.
  * @returns {object[]} 새 투사체들(아이디 없음)
  */
-export function updateCasting(player, dt) {
+export function updateCasting(player, dt, players, map) {
   const c = player.casting;
   if (!c) return [];
   if (player.hp <= 0) {
@@ -164,7 +237,7 @@ export function updateCasting(player, dt) {
   const level = player.skills[c.skill].level;
   const spawned = [];
   for (const effect of data.effects) {
-    const out = EFFECTS[effect.type]?.(player, effect, c, data, level);
+    const out = EFFECTS[effect.type]?.(player, effect, c, data, level, players, map);
     if (out) spawned.push(out);
   }
   return spawned;
@@ -218,6 +291,29 @@ export function updateSkillshot(proj, players, dt, ctx) {
   proj.y = by;
   proj.remaining -= step;
   return proj.remaining > EPSILON;
+}
+
+/**
+ * 유도 스킬 투사체(homingSkill) 이동과 적중. 대상의 판정 원에 닿으면 적중.
+ * 대상이 죽거나 타겟 불가가 되면 사라진다.
+ * @returns {boolean} 투사체를 계속 유지할지
+ */
+export function updateHomingSkill(proj, players, dt, ctx) {
+  const target = players[proj.targetId];
+  if (!target || target.hp <= 0 || target.targetable === false) return false;
+  const dx = target.x - proj.x;
+  const dy = target.y - proj.y;
+  const dist = Math.hypot(dx, dy);
+  const step = proj.speed * dt;
+  if (dist - step <= target.gameplayRadius) {
+    applyOnHit(proj, players[proj.ownerId], target, ctx);
+    return false;
+  }
+  proj.dirX = dx / dist;
+  proj.dirY = dy / dist;
+  proj.x += proj.dirX * step;
+  proj.y += proj.dirY * step;
+  return true;
 }
 
 /** [화면용] 스킬의 첫 투사체 효과 (범위 표시에 사용). 없으면 null */
