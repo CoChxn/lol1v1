@@ -330,10 +330,18 @@ if (!failed) {
         const cHit = r.s.players.c.hp < r.s.players.c.maxHp;
         if (proj.collision === 'first' && !(bHit && !cHit)) throw new Error('처음 맞은 적 하나만 맞아야 합니다');
         if (proj.collision === 'pierce' && !(bHit && cHit)) throw new Error('관통 투사체가 두 적을 모두 맞혀야 합니다');
-        // 사거리 밖 적은 맞지 않고 투사체가 사라진다
+        // 사거리 밖 적은 맞지 않고, 투사체는 사거리만큼 날아간 뒤 사라진다
+        // (비행 시간 = 시전 시간 + 사거리 ÷ 속도 만큼 지켜본다. 사거리가 길면 오래 걸림)
         s = duel(id, data.targeting.range + 300);
-        r = firstSkillHit(cast(s, blue.x + 5000, blue.y));
-        if (r.ev || r.s.projectiles.length) throw new Error('사거리 밖의 적을 맞혔거나 투사체가 사라지지 않았습니다');
+        s = cast(s, blue.x + 5000, blue.y);
+        const flightTicks = Math.ceil((data.activation.castTime + data.targeting.range / proj.speed) * 30) + 5;
+        let hitFar = false;
+        for (let i = 0; i < flightTicks; i++) {
+          s = step(s);
+          if (s.events.some((e) => e.type === 'damage' && e.skill === key)) hitFar = true;
+        }
+        if (hitFar) throw new Error('사거리 밖의 적을 맞혔습니다');
+        if (s.projectiles.some((p) => p.skill === key)) throw new Error(`투사체가 사거리(${data.targeting.range})를 날아간 뒤에도 사라지지 않았습니다`);
         // 마나 부족이면 시전 불가
         s = duel(id);
         s = { ...s, players: { ...s.players, a: { ...s.players.a, mana: data.manaCost[0] - 1 } } };
