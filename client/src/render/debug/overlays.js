@@ -1,6 +1,6 @@
-// [개발자 모드] 월드 위에 그리는 확인용 표시: 반경 3종, 사거리, 이동 목표, 공격 타이머, 평타 상태.
+// [개발자 모드] 월드 위에 그리는 확인용 표시: 반경 3종, 사거리, 이동 목표, 공격 타이머, 평타 상태, 스킬 시전 진행.
 import { getChampion, WINDUP_CANCEL_LEEWAY } from '@lol1v1/shared';
-import { lerpPlayerPos } from '../players.js';
+import { lerpPlayerPos, drawCasting } from '../players.js';
 import { drawAttackTimer } from '../overhead.js';
 
 function circle(ctx, x, y, r, color, dash = [], width = 1.5) {
@@ -61,6 +61,9 @@ export function drawDebugOverlays(ctx, prevState, state, alpha) {
       ctx.stroke();
       ctx.setLineDash([]);
     }
+
+    // 스킬 시전 진행 원
+    drawCasting(ctx, p, x, y);
 
     // 공격 타이머 바와 평타 상태
     drawAttackTimer(ctx, p, x, y);

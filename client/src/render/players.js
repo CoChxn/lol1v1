@@ -29,7 +29,6 @@ export function drawPlayers(ctx, prevState, state, alpha, myId) {
     const { x, y } = lerpPlayerPos(prevState.players[id], p, alpha);
     drawOverhead(ctx, p, x, y, id === myId);
     drawMarks(ctx, p, x, y);
-    drawCasting(ctx, p, x, y);
   }
 }
 
@@ -85,8 +84,8 @@ function drawMarks(ctx, p, x, y) {
   });
 }
 
-/** 스킬 시전 중: 캐릭터 둘레에 차오르는 원 (시전 시간이 길수록 잘 보인다) */
-function drawCasting(ctx, p, x, y) {
+/** [개발자 모드] 스킬 시전 중: 캐릭터 둘레에 차오르는 원 (overlays.js에서 그린다) */
+export function drawCasting(ctx, p, x, y) {
   const c = p.casting;
   if (!c || !(c.total > 0)) return;
   const progress = Math.min(Math.max(1 - c.remaining / c.total, 0), 1);
