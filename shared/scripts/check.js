@@ -1,11 +1,17 @@
 // `npm run check`: 챔피언 데이터 검사 + 짧은 게임 시뮬레이션 + 평타 타이머 규칙 검사
 import { CHAMPIONS } from '../champions/index.js';
 import { validateChampion } from '../champions/validate.js';
-import { createGameState, addPlayer } from '../state.js';
+import { createGameState as createRealGameState, addPlayer } from '../state.js';
+import { createLaneMap, clampToMap, worldToLane, laneDirection } from '../map.js';
 import { createPlayer } from '../player.js';
 import { update } from '../update.js';
 import { TICK_DT } from '../constants.js';
 import { armorMultiplier, physicalDamage, mitigate, damageRaw } from '../damage.js';
+
+// 대부분의 검사는 같은 맵 코드를 '가로 통로'(각도 0)에서 돌린다: 좌표를 x 방향 거리로 쓰기 쉽게.
+// 실제 게임의 대각선 통로는 아래 '대각선 맵' 검사에서 따로 확인한다.
+const TEST_MAP = createLaneMap({ angle: 0, margin: 0 });
+const createGameState = (opts = {}) => createRealGameState({ map: TEST_MAP, ...opts });
 
 let failed = false;
 const fail = (msg) => {
@@ -755,6 +761,70 @@ if (!failed) {
   } finally {
     delete CHAMPIONS.__melee;
   }
+}
+
+// 대각선 맵 (실제 게임 맵): 통로 안 시작 지점, 벽 충돌·미끄러짐, 순간이동·어택땅 벽 처리, 라인을 따라 평타
+try {
+  const real = createRealGameState();
+  const map = real.map;
+  const { length, width } = map.lane;
+  const inLane = (p, r = 35) => {
+    const { u, v } = worldToLane(map, p.x, p.y);
+    return u >= r - 1e-6 && u <= length - r + 1e-6 && Math.abs(v) <= width / 2 - r + 1e-6;
+  };
+  for (const team of ['blue', 'red']) {
+    const sp = map.spawns[team];
+    const { v } = worldToLane(map, sp.x, sp.y);
+    if (!inLane(sp) || Math.abs(v) > 1e-6) throw new Error(`${team} 시작 지점이 통로 가운데에 있지 않습니다`);
+  }
+  const dir = laneDirection(map);
+  const id = Object.keys(CHAMPIONS)[0];
+  const blue = map.spawns.blue;
+  const along = (d) => ({ x: blue.x + dir.x * d, y: blue.y + dir.y * d });
+  let s = addPlayer(real, createPlayer({ id: 'a', name: 'A', team: 'blue', x: blue.x, y: blue.y, championId: id }));
+  const bPos = along(600);
+  s = addPlayer(s, createPlayer({ id: 'b', name: 'B', team: 'red', x: bPos.x, y: bPos.y, championId: id, isDummy: true }));
+  // 통로 옆 벽 쪽(가로 방향)으로 멀리 우클릭 → 벽 앞에서 멈춤, 통로 밖으로 안 나감
+  const side = { x: blue.x - dir.y * 5000, y: blue.y + dir.x * 5000 };
+  let t = step(s, [{ playerId: 'a', type: 'move', x: side.x, y: side.y }]);
+  for (let i = 0; i < 120; i++) t = step(t);
+  const sideLane = worldToLane(map, t.players.a.x, t.players.a.y);
+  if (!inLane(t.players.a) || Math.abs(Math.abs(sideLane.v) - (width / 2 - t.players.a.pathingRadius)) > 1e-6) throw new Error('통로 옆 벽 앞에서 멈추지 않았습니다');
+  // 벽에 비스듬히 우클릭 → 벽을 따라 미끄러짐 (라인 방향으로 전진)
+  const diag = { x: t.players.a.x + (dir.x - dir.y) * 3000, y: t.players.a.y + (dir.y + dir.x) * 3000 };
+  const u0 = sideLane.u;
+  t = step(t, [{ playerId: 'a', type: 'move', x: diag.x, y: diag.y }]);
+  for (let i = 0; i < 60; i++) t = step(t);
+  if (!(worldToLane(map, t.players.a.x, t.players.a.y).u > u0 + 200) || !inLane(t.players.a)) throw new Error('벽을 따라 미끄러지지 않았습니다');
+  // 통로 밖을 찍은 순간이동·어택땅·순간이동 치트도 통로 안
+  const outside = { x: 0, y: 0 };
+  if (!inLane(clampToMap(outside.x, outside.y, 35, map))) throw new Error('벽 밖 지점이 통로 안으로 맞춰지지 않았습니다');
+  // (어택땅은 적이 없는 상태에서: 적이 있으면 먼저 공격하느라 목적지까지 오래 걸림)
+  const alone = addPlayer(real, createPlayer({ id: 'a', name: 'A', team: 'blue', x: blue.x, y: blue.y, championId: id }));
+  t = step(alone, [{ playerId: 'a', type: 'attackMove', x: outside.x, y: outside.y }]);
+  for (let i = 0; i < 30 * 40; i++) t = step(t);
+  if (t.players.a.attackMoveTarget || !inLane(t.players.a)) throw new Error('벽 밖 어택땅이 끝나지 않았거나 통로 밖으로 나갔습니다');
+  t = step(s, [{ playerId: 'a', type: 'debug', action: 'teleport', x: outside.x, y: outside.y }]);
+  if (!inLane(t.players.a)) throw new Error('순간이동 치트가 통로 밖으로 보냈습니다');
+  // 라인을 따라 평타
+  t = step(s, [{ playerId: 'a', type: 'attack', targetId: 'b' }]);
+  for (let i = 0; i < 90; i++) t = step(t);
+  if (!(t.players.b.hp < t.players.b.maxHp)) throw new Error('라인 위의 적에게 평타가 맞지 않았습니다');
+  // 허수아비 왔다 갔다: 라인 방향, 통로 안
+  t = step(s, [{ playerId: 'a', type: 'debug', action: 'setDummyMode', targetId: 'b', mode: 'patrol' }]);
+  let minU = Infinity;
+  let maxU = -Infinity;
+  for (let i = 0; i < 30 * 6; i++) {
+    t = step(t);
+    const { u } = worldToLane(map, t.players.b.x, t.players.b.y);
+    minU = Math.min(minU, u);
+    maxU = Math.max(maxU, u);
+    if (!inLane(t.players.b)) throw new Error('왔다 갔다 하는 허수아비가 통로 밖으로 나갔습니다');
+  }
+  if (maxU - minU < 500) throw new Error('허수아비가 라인 방향으로 왔다 갔다 하지 않습니다');
+  console.log(`✓ 대각선 맵 (${map.width.toFixed(0)}×${map.height.toFixed(0)} 안에 통로 ${length}×${width}: 시작 지점, 옆 벽 충돌, 벽 미끄러짐, 벽 밖 어택땅·순간이동, 라인 평타, 허수아비 왔다 갔다)`);
+} catch (e) {
+  fail(`대각선 맵: ${e.message}`);
 }
 
 if (failed) {

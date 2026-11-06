@@ -39,13 +39,9 @@ export function computeMoveSpeed(player) {
   return applySoftCap(raw);
 }
 
-/** 좌표를 맵 안쪽(반지름만큼 떨어진 곳)으로 제한한 값을 돌려준다. */
-export function clampToMap(x, y, radius, map) {
-  return {
-    x: Math.min(Math.max(x, radius), map.width - radius),
-    y: Math.min(Math.max(y, radius), map.height - radius),
-  };
-}
+// 벽 충돌: 좌표를 통로 안으로 맞춘다 (shared/map.js)
+import { clampToMap } from './map.js';
+export { clampToMap };
 
 /** 이동 목표를 설정한다. 벽 바깥을 찍으면 가장 가까운 벽 안쪽 지점이 목표가 된다. */
 export function setMoveTarget(player, x, y, map) {

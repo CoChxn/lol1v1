@@ -1,6 +1,6 @@
 // 클라이언트 진입점: 렌더링, 입력 수집, 서버 통신을 담당한다.
 import { io } from 'socket.io-client';
-import { TICK_DT, createGameState, createPlayer, addPlayer, update, getSkillData } from '@lol1v1/shared';
+import { TICK_DT, createGameState, createPlayer, addPlayer, update, getSkillData, laneDirection } from '@lol1v1/shared';
 import { startLoop } from './game/loop.js';
 import { createRenderer } from './render/renderer.js';
 import { setupInput } from './input.js';
@@ -30,8 +30,9 @@ function createInitialState() {
   let s = createGameState();
   const spawn = s.map.spawns.blue;
   s = addPlayer(s, createPlayer({ id: MY_ID, name: 'Player', team: 'blue', x: spawn.x, y: spawn.y }));
-  // 연습용 허수아비 (개발자 모드에서 행동을 바꿀 수 있다)
-  s = addPlayer(s, createPlayer({ id: 'dummy', name: 'Dummy', team: 'red', x: spawn.x + 1100, y: spawn.y, isDummy: true }));
+  // 연습용 허수아비: 내 시작 지점에서 라인 방향으로 1100 (개발자 모드에서 행동을 바꿀 수 있다)
+  const dir = laneDirection(s.map);
+  s = addPlayer(s, createPlayer({ id: 'dummy', name: 'Dummy', team: 'red', x: spawn.x + dir.x * 1100, y: spawn.y + dir.y * 1100, isDummy: true }));
   return s;
 }
 

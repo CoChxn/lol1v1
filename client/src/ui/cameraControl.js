@@ -6,13 +6,13 @@
 // - 자유 모드: 마우스를 화면 끝 15픽셀 안에 대면 그 방향으로 이동
 // - Y: 고정 ↔ 자유 전환 (설정에 저장)
 // - Space / F1: 짧게 누르면 내 캐릭터로 한 번 이동, 누르고 있으면 계속 따라감
-// - 마우스 휠: 화면 가운데 기준 확대 (1.0 ~ 1.5배). 개발자 모드에서는 0.08 ~ 3배
+// - 마우스 휠: 화면 가운데 기준 확대 (1.0 ~ 1.5배). 개발자 모드에서는 0.05 ~ 3배
 import { ZOOM_RANGE } from './settings.js';
 
 export const EDGE_PAN_WIDTH = 15; // 화면 끝 감지 폭 (픽셀)
 const PER_SIDE_OFFSET = 0.15; // 화면 폭 대비
 const ZOOM_STEP = 1.1; // 휠 한 칸
-const DEV_ZOOM_RANGE = { min: 0.08, max: 3 };
+const DEV_ZOOM_RANGE = { min: 0.05, max: 3 };
 const MAX_FRAME_TIME = 0.1;
 
 const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
@@ -85,11 +85,15 @@ export function createCameraControl({ camera, canvas, settings, isDevMode }) {
   );
 
   /** 고정 모드에서 화면 가운데에 둘 지점 (캐릭터 위치 + 오프셋, 월드 단위) */
-  function lockedCenter(focus, team) {
+  function lockedCenter(focus, team, map) {
     const { offsetMode } = settings.getCamera();
     if (offsetMode === 'fixed') return { x: focus.x, y: focus.y };
+    // 진영별: 라인 방향(파랑 → 빨강)으로 적 쪽을 더 넓게
     const side = team === 'red' ? -1 : 1;
-    return { x: focus.x + (side * camera.viewWidth * PER_SIDE_OFFSET) / camera.zoom, y: focus.y };
+    const dist = (side * camera.viewWidth * PER_SIDE_OFFSET) / camera.zoom;
+    const dx = map.lane?.dirX ?? 1;
+    const dy = map.lane?.dirY ?? 0;
+    return { x: focus.x + dx * dist, y: focus.y + dy * dist };
   }
 
   /** 화면 끝에 닿은 방향 (-1, 0, 1) */
@@ -113,7 +117,7 @@ export function createCameraControl({ camera, canvas, settings, isDevMode }) {
 
       if (mode === 'locked' || followHeld || snapPending || freeX === null) {
         snapPending = false;
-        const c = lockedCenter(focus, team);
+        const c = lockedCenter(focus, team, map);
         camera.lookAt(c.x, c.y, map.width, map.height);
       } else {
         // 화면 끝 방향(화면 기준)을 월드 방향으로 바꿔서 이동 (화면이 회전되어 있으므로)

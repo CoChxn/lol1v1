@@ -34,7 +34,7 @@ export function drawCameraDebug(ctx, camera, status) {
     `[카메라] ${status.mode === 'locked' ? '고정' : '자유'}${status.followHeld ? ' (Space/F1 따라가는 중)' : ''}  배율 ×${status.zoom.toFixed(2)}`,
     `  화면 가운데 월드 ${camera.x.toFixed(0)}, ${camera.y.toFixed(0)}`,
     `  마우스 아래 월드 ${mouseWorld ? `${mouseWorld.x.toFixed(0)}, ${mouseWorld.y.toFixed(0)}` : '-'}`,
-    '  Y: 모드 전환  Space/F1: 내 캐릭터  휠: 확대 (개발자 모드 0.08~3배)',
+    '  Y: 모드 전환  Space/F1: 내 캐릭터  휠: 확대 (개발자 모드 0.05~3배)',
   ];
   ctx.font = '13px monospace';
   const boxW = Math.max(...lines.map((l) => ctx.measureText(l).width)) + 20;

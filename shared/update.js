@@ -32,7 +32,7 @@ export function update(state, inputs, dt) {
   let projectiles = state.projectiles.map((p) => ({ ...p }));
   let nextId = state.nextId;
   // 허수아비 행동(개발자 모드)이 만든 입력도 일반 입력과 똑같이 처리한다
-  const allInputs = [...inputs, ...dummyInputs(players)];
+  const allInputs = [...inputs, ...dummyInputs(players, state.map)];
   // 난수·이벤트 (난수 시드는 다음 상태로 이어진다)
   const ctx = { rng: { seed: state.rngSeed }, events: [] };
 
