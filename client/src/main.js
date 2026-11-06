@@ -94,6 +94,14 @@ const inputControl = setupInput(canvas, {
   getDummyArmor: () => state.players.dummy?.armor,
   isDevMode: devMode.isEnabled,
   getCastMode,
+  // 쿨타임이 선입력 허용 시간(queueTime)보다 많이 남았으면 범위 표시를 띄우지 않는다
+  canAim(skill) {
+    const me = state.players[MY_ID];
+    const st = me?.skills[skill];
+    const data = me && getSkillData(me, skill);
+    if (!st || !data) return false;
+    return st.cooldown <= (data.queueTime ?? 0) + 1e-6;
+  },
   onInput(input) {
     sendInput(input);
     if (input.type === 'move') renderer.clickMarker.show(input.x, input.y);
@@ -133,4 +141,5 @@ startLoop({
 if (import.meta.env.DEV) {
   window.__game = { get state() { return state; } };
   window.__cam = renderer.camera;
+  window.__aim = () => inputControl.getAim()?.skill ?? null;
 }

@@ -19,11 +19,20 @@
  * @param {() => number|undefined} [opts.getDummyArmor]  [테스트용] 허수아비의 현재 방어력
  * @param {() => boolean} [opts.isDevMode]  개발자 모드 여부 (테스트 키는 개발자 모드에서만 동작)
  * @param {(skill: string) => string} [opts.getCastMode]  스킬 키의 입력 방식 ('normal' | 'quick' | 'quickIndicator')
+ * @param {(skill: string) => boolean} [opts.canAim]  지금 그 스킬의 범위 표시를 띄울 수 있는지 (쿨타임 중이면 false)
  * @returns {{ isAttackMoveMode: () => boolean, getAim: () => ({ skill: string, x: number, y: number } | null) }}
  */
 export function setupInput(
   canvas,
-  { screenToWorld, pickEnemy, onInput, getDummyArmor = () => 0, isDevMode = () => false, getCastMode = () => 'quickIndicator' },
+  {
+    screenToWorld,
+    pickEnemy,
+    onInput,
+    getDummyArmor = () => 0,
+    isDevMode = () => false,
+    getCastMode = () => 'quickIndicator',
+    canAim = () => true,
+  },
 ) {
   let rightHeld = false;
   let attackMoveMode = false;
@@ -58,6 +67,8 @@ export function setupInput(
       return;
     }
     // 일반 / 표시기와 함께 빠른 시전: 범위 표시 시작 (다른 스킬 조준 중이었으면 바꾼다)
+    // 쿨타임 중이면 범위 표시를 띄우지 않는다 (선입력 허용 시간 안이면 띄움)
+    if (!canAim(skill)) return;
     aimingSkill = skill;
     aimingMode = mode;
   }
