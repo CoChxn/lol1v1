@@ -130,7 +130,7 @@ export default {
       cooldown: [120, 105, 90],
       targeting: {
         type: 'direction',
-        range: 6000,
+        range: 20000,
         outOfRange: 'maxRange',
       },
       activation: { type: 'normal', castTime: 1 },
