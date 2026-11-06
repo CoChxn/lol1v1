@@ -13,8 +13,9 @@ export function drawProjectiles(ctx, prevState, state, alpha) {
 
     if (proj.kind === 'skillshot' || proj.kind === 'homingSkill') {
       // 스킬 투사체: 판정(히트박스)과 똑같은 크기의 원으로 그린다
-      //   orb(예: W): 노란색 / bolt(예: Q): 팀 색
-      const fill = proj.shape === 'orb' ? '255, 210, 60' : color;
+      //   orb(예: W): 노란색 / wave(예: R): 흰빛 하늘색 / bolt(예: Q): 팀 색
+      const SHAPE_COLORS = { orb: '255, 210, 60', wave: '190, 235, 255' };
+      const fill = SHAPE_COLORS[proj.shape] ?? color;
       const r = proj.radius;
       ctx.fillStyle = `rgba(${fill}, 0.55)`;
       ctx.strokeStyle = `rgba(${fill}, 1)`;

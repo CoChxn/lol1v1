@@ -121,6 +121,33 @@ export default {
         },
       ],
     },
+    // R 섬멸 파동: 방향 지정(전 맵) + 일반 발동(시전 1초) + 관통 투사체 → 지나가는 모든 적에게 마법 피해
+    //   시전을 시작한 위치에서 발사 (시전 중 밀려도 발사 위치는 그대로). 궁극기라 3레벨까지
+    R: {
+      name: '섬멸 파동',
+      queueTime: 0.5,
+      manaCost: [100, 100, 100],
+      cooldown: [120, 105, 90],
+      targeting: {
+        type: 'direction',
+        range: 6000,
+        outOfRange: 'maxRange',
+      },
+      activation: { type: 'normal', castTime: 1 },
+      effects: [
+        {
+          type: 'projectile',
+          speed: 2000,
+          radius: 160,
+          collision: 'pierce',
+          origin: 'castStart',
+          shape: 'wave',
+          onHit: [
+            { type: 'damage', damageType: 'magic', base: [350, 550, 750], nonChampionBase: [150, 225, 300], bonusAdRatio: 1, apRatio: 1.1 },
+          ],
+        },
+      ],
+    },
   },
 
   // 마법 방어

@@ -8,14 +8,14 @@
 // - 조준: direction (마우스 방향, 사거리 밖이면 최대 사거리로)
 //         location (땅 클릭, 사거리 밖이면 그 방향으로 최대 사거리 지점)
 // - 발동: normal (+ 시전 시간)
-// - 효과: projectile (직선, collision: first | pierce, targets: all | champions)
+// - 효과: projectile (직선, collision: first | pierce, targets: all | champions, origin: castEnd | castStart)
 //         blink (조준한 위치로 순간이동)
 //         homingProjectile (자동 대상 선택 → 유도 투사체)
 //         → 적중 시 onHit: damage(physical·magic·true), reduceCooldowns, applyMark(표식, marks.js), reveal(시야)
 //
 // player·projectile은 update에서 복사한 객체라 직접 바꿔도 된다.
 import { getChampion } from './champions/index.js';
-import { SKILL_KEYS, SKILL_MAX_LEVEL } from './champions/validate.js';
+import { SKILL_KEYS, SKILL_MAX_LEVEL, skillMaxLevel } from './champions/validate.js';
 import { spendMana } from './combat.js';
 import { cancelWindup } from './attack.js';
 import { dealSkillDamage, damageRaw } from './damage.js';
@@ -24,7 +24,7 @@ import { applyMark, triggerMarks } from './marks.js';
 
 const EPSILON = 1e-6;
 
-export { SKILL_KEYS, SKILL_MAX_LEVEL };
+export { SKILL_KEYS, SKILL_MAX_LEVEL, skillMaxLevel };
 
 /** 챔피언 데이터의 스킬 정보 (없으면 null) */
 export function getSkillData(player, key) {
@@ -92,7 +92,8 @@ export function orderCast(player, key, x, y) {
   // 평타 선딜레이 중이었다면 취소된다 (스킬 시전도 다른 명령)
   cancelWindup(player);
   // 2. 발동: normal → 시전 시간 뒤 효과 발동
-  player.casting = { skill: key, ...aim, remaining: data.activation.castTime };
+  // 시전 시작 위치도 저장한다 (origin: 'castStart' 투사체는 여기서 발사)
+  player.casting = { skill: key, ...aim, startX: player.x, startY: player.y, remaining: data.activation.castTime, total: data.activation.castTime };
 }
 
 /** 매 틱 스킬 쿨타임 감소 */
@@ -117,7 +118,15 @@ export function reduceAllCooldowns(player, amount) {
  */
 function snapshotOnHit(player, onHit, level) {
   return onHit.map((e) => {
-    if (e.type === 'damage') return { type: 'damage', damageType: e.damageType, raw: damageRaw(player, e, level) };
+    if (e.type === 'damage') {
+      return {
+        type: 'damage',
+        damageType: e.damageType,
+        raw: damageRaw(player, e, level),
+        // 챔피언이 아닌 대상에게 다른 기본 피해를 쓰는 스킬
+        rawNonChampion: e.nonChampionBase ? damageRaw(player, e, level, e.nonChampionBase) : undefined,
+      };
+    }
     return { ...e };
   });
 }
@@ -125,7 +134,10 @@ function snapshotOnHit(player, onHit, level) {
 /** 적중 시 효과 적용 */
 function applyOnHit(proj, owner, target, ctx) {
   for (const e of proj.onHit) {
-    if (e.type === 'damage') dealSkillDamage(owner, target, e.raw, e.damageType, proj.skill, ctx);
+    if (e.type === 'damage') {
+      const raw = target.unitType !== 'champion' && e.rawNonChampion !== undefined ? e.rawNonChampion : e.raw;
+      dealSkillDamage(owner, target, raw, e.damageType, proj.skill, ctx);
+    }
     else if (e.type === 'reduceCooldowns' && owner) reduceAllCooldowns(owner, e.amount);
     else if (e.type === 'applyMark') applyMark(proj.ownerId, target, proj.skill, e.duration);
     else if (e.type === 'reveal') target.revealed = Math.max(target.revealed ?? 0, e.duration);
@@ -201,8 +213,9 @@ const EFFECTS = {
       skill: cast.skill,
       ownerId: player.id,
       team: player.team,
-      x: player.x, // 시전 시간이 끝나는 순간 시전자가 있는 위치에서 발사
-      y: player.y,
+      // 발사 위치: 기본은 시전 시간이 끝나는 순간의 시전자 위치, origin 'castStart'면 시전을 시작한 위치
+      x: effect.origin === 'castStart' ? cast.startX : player.x,
+      y: effect.origin === 'castStart' ? cast.startY : player.y,
       dirX: cast.dirX,
       dirY: cast.dirY,
       speed: effect.speed,

@@ -1,11 +1,17 @@
 // 챔피언 데이터 검사. (개발 세션 담당: 챔피언에 새 항목을 추가하면 SCHEMA에도 추가한다)
 // 각 규칙: { type: 'number' | 'string' | 'object' | 'levels' | 'list' | 'skills', min, max, minExclusive, fields, optional, oneOf, of }
-// levels: 레벨별 숫자 배열 (길이 SKILL_MAX_LEVEL)
+// levels: 레벨별 숫자 배열 (길이 = 스킬 최대 레벨: Q/W/E 5, 궁극기 R 3)
 // list: 종류(type)별 규칙이 다른 객체 배열 (of: 'effect' | 'onHit')
 // skills: { Q, W, E, R } 각각 SKILL_SCHEMA로 검사
 // optional: true면 적지 않아도 된다 (코드에서 기본값 사용)
 
 export const SKILL_MAX_LEVEL = 5;
+export const ULTIMATE_MAX_LEVEL = 3;
+
+/** 스킬 키별 최대 레벨 (궁극기 R은 3) */
+export function skillMaxLevel(key) {
+  return key === 'R' ? ULTIMATE_MAX_LEVEL : SKILL_MAX_LEVEL;
+}
 export const SKILL_KEYS = ['Q', 'W', 'E', 'R'];
 
 // 스킬 규칙: 조준(targeting) / 발동(activation) / 효과(effects) 세 축 (docs/SKILL_DESIGN.md)
@@ -42,7 +48,8 @@ const EFFECT_SCHEMAS = {
     radius: { type: 'number', minExclusive: 0 },
     collision: { type: 'string', oneOf: ['first', 'pierce'] }, // first: 처음 맞은 적만, pierce: 관통
     targets: { type: 'string', oneOf: ['all', 'champions'], optional: true }, // 맞을 수 있는 대상 (기본 all)
-    shape: { type: 'string', oneOf: ['bolt', 'orb'], optional: true }, // 화면에 그리는 모양 (기본 bolt)
+    shape: { type: 'string', oneOf: ['bolt', 'orb', 'wave'], optional: true }, // 화면에 그리는 모양 (기본 bolt)
+    origin: { type: 'string', oneOf: ['castEnd', 'castStart'], optional: true }, // 발사 위치: 시전이 끝날 때(기본) / 시작할 때의 시전자 위치
     onHit: { type: 'list', of: 'onHit' },
   },
   // 순간이동: 조준한 위치로 즉시 이동 (위치 지정 스킬, 거리 = targeting.range)
@@ -64,6 +71,7 @@ const DAMAGE_SCHEMA = {
   type: { type: 'string' },
   damageType: { type: 'string', oneOf: ['physical', 'magic', 'true'] },
   base: { type: 'levels', min: 0 },
+  nonChampionBase: { type: 'levels', min: 0, optional: true }, // 챔피언이 아닌 대상(미니언·몬스터)에게 쓰는 기본 피해
   adRatio: { type: 'number', min: 0, optional: true }, // 총 공격력 계수
   bonusAdRatio: { type: 'number', min: 0, optional: true }, // 추가 공격력 계수
   apRatio: { type: 'number', min: 0, optional: true }, // 주문력 계수
@@ -135,7 +143,7 @@ const SCHEMA = {
   skills: { type: 'skills', optional: true },
 };
 
-function checkFields(data, schema, path, errors) {
+function checkFields(data, schema, path, errors, ctx = { levels: SKILL_MAX_LEVEL }) {
   if (typeof data !== 'object' || data === null) {
     errors.push(`${path}: 객체여야 합니다`);
     return;
@@ -149,11 +157,11 @@ function checkFields(data, schema, path, errors) {
       continue;
     }
     if (rule.type === 'object') {
-      checkFields(value, rule.fields, where, errors);
+      checkFields(value, rule.fields, where, errors, ctx);
       continue;
     }
     if (rule.type === 'list') {
-      checkList(value, LIST_KINDS[rule.of], where, errors);
+      checkList(value, LIST_KINDS[rule.of], where, errors, ctx);
       continue;
     }
     if (rule.type === 'skills') {
@@ -163,9 +171,9 @@ function checkFields(data, schema, path, errors) {
     if (rule.type === 'levels') {
       const ok =
         Array.isArray(value) &&
-        value.length === SKILL_MAX_LEVEL &&
+        value.length === ctx.levels &&
         value.every((v) => typeof v === 'number' && Number.isFinite(v) && (rule.min === undefined || v >= rule.min));
-      if (!ok) errors.push(`${where}: 숫자 ${SKILL_MAX_LEVEL}개짜리 배열이어야 합니다${rule.min !== undefined ? ` (각 ${rule.min} 이상)` : ''} (지금: ${JSON.stringify(value)})`);
+      if (!ok) errors.push(`${where}: 숫자 ${ctx.levels}개짜리 배열이어야 합니다${rule.min !== undefined ? ` (각 ${rule.min} 이상)` : ''} (지금: ${JSON.stringify(value)})`);
       continue;
     }
     if (rule.type === 'boolean') {
@@ -192,7 +200,7 @@ function checkFields(data, schema, path, errors) {
 }
 
 /** 종류(type)별 규칙이 다른 객체 배열 검사 */
-function checkList(list, schemas, path, errors) {
+function checkList(list, schemas, path, errors, ctx) {
   if (!Array.isArray(list) || list.length === 0) {
     errors.push(`${path}: 비어 있지 않은 배열이어야 합니다`);
     return;
@@ -204,7 +212,7 @@ function checkList(list, schemas, path, errors) {
       errors.push(`${where}.type: ${Object.keys(schemas).join(' / ')} 중 하나여야 합니다 (지금: ${item?.type})`);
       return;
     }
-    checkFields(item, schema, where, errors);
+    checkFields(item, schema, where, errors, ctx);
   });
 }
 
@@ -219,7 +227,7 @@ function checkSkills(skills, path, errors) {
       errors.push(`${where}: 스킬 키는 ${SKILL_KEYS.join(' / ')} 중 하나여야 합니다`);
       continue;
     }
-    checkFields(skills[key], SKILL_SCHEMA, where, errors);
+    checkFields(skills[key], SKILL_SCHEMA, where, errors, { levels: skillMaxLevel(key) });
   }
 }
 

@@ -5,7 +5,7 @@ import { createGameState, addPlayer } from '../state.js';
 import { createPlayer } from '../player.js';
 import { update } from '../update.js';
 import { TICK_DT } from '../constants.js';
-import { armorMultiplier, physicalDamage } from '../damage.js';
+import { armorMultiplier, physicalDamage, mitigate, damageRaw } from '../damage.js';
 
 let failed = false;
 const fail = (msg) => {
@@ -294,8 +294,13 @@ if (!failed) {
         const cdBeforeHit = s.players.a.skills[key].cooldown;
         let r = firstSkillHit(s);
         if (!r.ev) throw new Error('앞에 있는 적을 맞히지 못했습니다');
-        const raw = dmg ? dmg.base[0] + s.players.a.attackDamage * dmg.adRatio : 0;
-        if (dmg && Math.abs(r.ev.amount - physicalDamage(raw, s.players.b.armor)) > 1e-9) throw new Error(`피해가 공식과 다릅니다 (${r.ev.amount})`);
+        // 기대값: 기본 + 총 공격력 × adRatio + 추가 공격력 × bonusAdRatio + 주문력 × apRatio → 피해 종류별 저항 적용
+        const a0 = s.players.a;
+        const raw = dmg.base[0] + a0.attackDamage * (dmg.adRatio ?? 0) + (a0.attackDamage - a0.baseAttackDamage) * (dmg.bonusAdRatio ?? 0) + a0.abilityPower * (dmg.apRatio ?? 0);
+        const expectAmount = mitigate(raw, dmg.damageType, r.s.players.b);
+        if (!Number.isFinite(expectAmount) || Math.abs(r.ev.amount - expectAmount) > 1e-9 || r.ev.damageType !== dmg.damageType) {
+          throw new Error(`피해가 공식과 다릅니다 (${r.ev.amount}, 예상 ${expectAmount})`);
+        }
         const elapsed = r.s.time - s.time;
         const expectCd = Math.max(0, cdBeforeHit - elapsed - cdr);
         if (Math.abs(r.s.players.a.skills[key].cooldown - expectCd) > 1e-6) throw new Error(`적중 시 쿨타임 감소가 다릅니다 (${r.s.players.a.skills[key].cooldown.toFixed(3)}, 예상 ${expectCd.toFixed(3)})`);
@@ -610,7 +615,52 @@ if (!failed) {
     }
   }
 
-  // 12. 근접 평타: 투사체 없이 즉시 적중 (검사용 임시 챔피언)
+  // 12. 투사체 세부 옵션: 시전 시작 위치에서 발사(origin castStart), 챔피언이 아닌 대상 피해(nonChampionBase), 궁극기 레벨 상한
+  for (const id in CHAMPIONS) {
+    for (const key in CHAMPIONS[id].skills ?? {}) {
+      const data = CHAMPIONS[id].skills[key];
+      const proj = data.effects.find((e) => e.type === 'projectile');
+      if (!proj) continue;
+      const dmg = proj.onHit.find((e) => e.type === 'damage');
+      try {
+        const { blue } = createGameState().map.spawns;
+        const patch = (s, pid, p) => ({ ...s, players: { ...s.players, [pid]: { ...s.players[pid], ...p } } });
+        // 레벨 상한: 레벨별 배열 길이
+        let s = step(duel(id, 2000), [{ playerId: 'a', type: 'debug', action: 'setSkillLevel', skill: key, value: 99 }]);
+        if (s.players.a.skills[key].level !== data.manaCost.length) throw new Error(`레벨 상한이 ${data.manaCost.length}이 아닙니다 (${s.players.a.skills[key].level})`);
+        if (proj.origin === 'castStart') {
+          s = step(duel(id, 2000), [{ playerId: 'a', type: 'cast', skill: key, x: blue.x + 3000, y: blue.y }]);
+          s = patch(s, 'a', { y: blue.y - 300 }); // 시전 중 밀림
+          while (s.players.a.casting) s = step(s);
+          const p0 = s.projectiles.find((p) => p.skill === key);
+          const startY = p0.y - p0.dirY * p0.speed * TICK_DT;
+          if (!p0 || Math.abs(startY - blue.y) > 1e-6) throw new Error('시전 시작 위치에서 발사되지 않았습니다');
+        }
+        if (dmg?.nonChampionBase) {
+          s = duel(id, 2000);
+          s = addPlayer(s, { ...createPlayer({ id: 'm', name: 'M', team: 'red', x: blue.x + 400, y: blue.y, championId: id, isDummy: true }), unitType: 'minion' });
+          s = step(s, [{ playerId: 'a', type: 'cast', skill: key, x: blue.x + 3000, y: blue.y }]);
+          const evs = [];
+          for (let i = 0; i < 90; i++) {
+            s = step(s);
+            evs.push(...s.events);
+          }
+          const a0 = s.players.a;
+          const hitM = evs.find((e) => e.type === 'damage' && e.targetId === 'm');
+          const hitB = evs.find((e) => e.type === 'damage' && e.targetId === 'b' && !e.mark);
+          if (!hitM || Math.abs(hitM.raw - damageRaw(a0, dmg, 1, dmg.nonChampionBase)) > 1e-9) throw new Error('챔피언이 아닌 대상에게 nonChampionBase 피해가 들어가지 않았습니다');
+          if (!hitB || Math.abs(hitB.raw - damageRaw(a0, dmg, 1)) > 1e-9) throw new Error('챔피언에게 base 피해가 들어가지 않았습니다');
+        }
+        if (proj.origin === 'castStart' || dmg?.nonChampionBase || data.manaCost.length !== 5) {
+          console.log(`✓ ${id} ${key} ${data.name} 세부 (레벨 상한 ${data.manaCost.length}${proj.origin === 'castStart' ? ', 시전 시작 위치에서 발사' : ''}${dmg?.nonChampionBase ? ', 챔피언/비챔피언 피해 구분' : ''})`);
+        }
+      } catch (e) {
+        fail(`${id} ${key} 세부: ${e.message}`);
+      }
+    }
+  }
+
+  // 13. 근접 평타: 투사체 없이 즉시 적중 (검사용 임시 챔피언)
   try {
     const base = CHAMPIONS[Object.keys(CHAMPIONS)[0]];
     CHAMPIONS.__melee = { ...base, attack: { type: 'melee', range: 125, damage: 10, attackSpeed: 1, windupRatio: 0.25 } };

@@ -6,7 +6,7 @@ import { applyDamage, spendMana, restoreFull } from './combat.js';
 import { clampToMap } from './movement.js';
 import { cancelAttack } from './attack.js';
 import { DUMMY_MODES } from './dummyAI.js';
-import { SKILL_MAX_LEVEL } from './champions/validate.js';
+import { skillMaxLevel } from './champions/validate.js';
 
 // 바꿀 수 있는 스탯과 허용 범위
 export const DEBUG_STATS = {
@@ -77,7 +77,7 @@ export function applyDebugInput(players, player, input, map) {
     }
   } else if (action === 'setSkillLevel') {
     const st = target.skills?.[input.skill];
-    if (st && Number.isFinite(input.value)) st.level = Math.min(Math.max(Math.round(input.value), 1), SKILL_MAX_LEVEL);
+    if (st && Number.isFinite(input.value)) st.level = Math.min(Math.max(Math.round(input.value), 1), skillMaxLevel(input.skill));
   } else if (action === 'teleport') {
     if (Number.isFinite(input.x) && Number.isFinite(input.y) && map) {
       const pos = clampToMap(input.x, input.y, target.pathingRadius, map);

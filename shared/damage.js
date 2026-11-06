@@ -34,9 +34,10 @@ export function mitigate(raw, damageType, target) {
  * 피해 효과의 피해량 (감소 전)
  *   기본 피해(레벨별) + 총 공격력 × adRatio + 추가 공격력 × bonusAdRatio + 주문력 × apRatio
  *   추가 공격력 = 총 공격력 − 챔피언 기본 공격력
+ *   baseValues: 기본 피해 배열 (챔피언이 아닌 대상에게는 nonChampionBase를 넘긴다)
  */
-export function damageRaw(player, effect, level) {
-  const base = effect.base[Math.min(Math.max(level, 1), effect.base.length) - 1];
+export function damageRaw(player, effect, level, baseValues = effect.base) {
+  const base = baseValues[Math.min(Math.max(level, 1), baseValues.length) - 1];
   const bonusAd = player.attackDamage - player.baseAttackDamage;
   return (
     base +

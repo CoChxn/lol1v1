@@ -29,6 +29,7 @@ export function drawPlayers(ctx, prevState, state, alpha, myId) {
     const { x, y } = lerpPlayerPos(prevState.players[id], p, alpha);
     drawOverhead(ctx, p, x, y, id === myId);
     drawMarks(ctx, p, x, y);
+    drawCasting(ctx, p, x, y);
   }
 }
 
@@ -82,4 +83,21 @@ function drawMarks(ctx, p, x, y) {
     ctx.fillText(label, mx, top - 22);
     ctx.textAlign = 'start';
   });
+}
+
+/** 스킬 시전 중: 캐릭터 둘레에 차오르는 원 (시전 시간이 길수록 잘 보인다) */
+function drawCasting(ctx, p, x, y) {
+  const c = p.casting;
+  if (!c || !(c.total > 0)) return;
+  const progress = Math.min(Math.max(1 - c.remaining / c.total, 0), 1);
+  const r = p.gameplayRadius + 10;
+  ctx.lineWidth = 5;
+  ctx.strokeStyle = 'rgba(0, 0, 0, 0.45)';
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.strokeStyle = 'rgba(190, 235, 255, 0.95)';
+  ctx.beginPath();
+  ctx.arc(x, y, r, -Math.PI / 2, -Math.PI / 2 + progress * Math.PI * 2);
+  ctx.stroke();
 }

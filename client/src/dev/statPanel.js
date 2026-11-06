@@ -1,3 +1,4 @@
+import { getSkillData } from '@lol1v1/shared';
 // [개발자 모드] 스탯 조절 패널 (화면 오른쪽 HTML 패널).
 // 값을 직접 바꾸지 않고 { type: 'debug', ... } 입력으로 보내서 shared 로직이 처리한다.
 
@@ -180,7 +181,7 @@ export function createStatPanel({ getState, myId, onInput, timeControl, onReset 
 
   // 스킬 레벨 (선택한 대상)
   const skillTitle = document.createElement('h3');
-  skillTitle.textContent = '스킬 레벨 (1~5)';
+  skillTitle.textContent = '스킬 레벨';
   const skillBox = document.createElement('div');
   const skillInputs = {};
   for (const key of ['Q', 'W', 'E', 'R']) {
@@ -213,7 +214,9 @@ export function createStatPanel({ getState, myId, onInput, timeControl, onReset 
       const st = p?.skills?.[key];
       row.style.display = st ? 'flex' : 'none';
       if (!st) continue;
-      name.textContent = `${key} 레벨`;
+      const max = getSkillData(p, key)?.manaCost.length ?? 5;
+      name.textContent = `${key} 레벨 (1~${max})`;
+      input.max = String(max);
       if (document.activeElement !== input && input.value !== String(st.level)) input.value = String(st.level);
     }
   }
