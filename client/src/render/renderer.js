@@ -11,6 +11,7 @@ import { drawSkillBar } from './skillBar.js';
 import { drawDebugOverlays, drawOverlayLegend } from './debug/overlays.js';
 import { drawInfoPanel, drawModeBadge, drawTimeBanner } from './debug/infoPanel.js';
 import { createCombatLog } from './debug/combatLog.js';
+import { drawCameraDebug } from './debug/cameraDebug.js';
 
 export function createRenderer(canvas) {
   const ctx = canvas.getContext('2d');
@@ -37,7 +38,7 @@ export function createRenderer(canvas) {
    * @param {object} state  현재 틱 상태
    * @param {number} alpha  두 틱 사이 진행 비율(0~1)
    * @param {string} myId  내 플레이어 ID (카메라가 따라감)
-   * @param {object} [ui]  화면 상태 { attackMoveMode, devMode, time: { paused, scale }, aim: { skill, x, y } }
+   * @param {object} [ui]  화면 상태 { attackMoveMode, devMode, time: { paused, scale }, aim: { skill, x, y }, cameraControl }
    */
   function render(prevState, state, alpha, myId, ui = {}) {
     frames++;
@@ -56,7 +57,8 @@ export function createRenderer(canvas) {
     // 카메라: 내 캐릭터 위치(보간된 값)를 따라간다
     const me = state.players[myId];
     const focus = me ? lerpPlayerPos(prevState.players[myId], me, alpha) : state.map.spawns.blue;
-    camera.follow(focus.x, focus.y, state.map.width, state.map.height);
+    if (ui.cameraControl) ui.cameraControl.update(focus, me?.team, state.map);
+    else camera.lookAt(focus.x, focus.y, state.map.width, state.map.height);
 
     // 월드
     camera.apply(ctx);
@@ -76,6 +78,7 @@ export function createRenderer(canvas) {
     if (ui.devMode) {
       drawInfoPanel(ctx, state, myId, { fps, combatLog });
       drawOverlayLegend(ctx, canvas.width, canvas.height);
+      if (ui.cameraControl) drawCameraDebug(ctx, camera, ui.cameraControl.status());
       if (ui.time) drawTimeBanner(ctx, canvas.width, state, ui.time);
     }
     drawModeBadge(ctx, canvas.width, ui.devMode);

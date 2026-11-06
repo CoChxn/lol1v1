@@ -9,6 +9,7 @@ import { createStatPanel } from './dev/statPanel.js';
 import { createTimeControl } from './dev/timeControl.js';
 import { createSettings } from './ui/settings.js';
 import { createSettingsPanel } from './ui/settingsPanel.js';
+import { createCameraControl } from './ui/cameraControl.js';
 
 // --- 서버 연결 ---
 const socket = io();
@@ -44,6 +45,7 @@ const devMode = createDevMode();
 const timeControl = createTimeControl(devMode.isEnabled);
 const settings = createSettings();
 createSettingsPanel(settings);
+const cameraControl = createCameraControl({ camera: renderer.camera, canvas, settings, isDevMode: devMode.isEnabled });
 
 // 스킬 키의 실제 입력 방식: 설정값. 단, 지정할 대상이 없는 스킬(자동·자기·근접 조준)은 항상 빠른 시전
 const ALWAYS_QUICK_TARGETING = ['auto', 'self', 'proximity'];
@@ -122,11 +124,12 @@ startLoop({
   },
   render(alpha) {
     statPanel.update(devMode.isEnabled());
-    renderer.render(prevState, state, alpha, MY_ID, { attackMoveMode: inputControl.isAttackMoveMode(), devMode: devMode.isEnabled(), time: timeControl.status(), aim: inputControl.getAim() });
+    renderer.render(prevState, state, alpha, MY_ID, { attackMoveMode: inputControl.isAttackMoveMode(), devMode: devMode.isEnabled(), time: timeControl.status(), aim: inputControl.getAim(), cameraControl });
   },
 });
 
 // 개발용: 브라우저 콘솔에서 상태 확인 (window.__game.state)
 if (import.meta.env.DEV) {
   window.__game = { get state() { return state; } };
+  window.__cam = renderer.camera;
 }

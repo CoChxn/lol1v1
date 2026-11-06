@@ -1,5 +1,5 @@
-// 설정 창: 왼쪽 아래 ⚙ 버튼으로 열고 닫는다. 스킬 키별 입력 방식을 고른다.
-import { CAST_MODES } from './settings.js';
+// 설정 창: 왼쪽 아래 ⚙ 버튼으로 열고 닫는다. 스킬 키별 입력 방식, 카메라 설정을 고른다.
+import { CAST_MODES, CAMERA_MODES, CAMERA_OFFSET_MODES, PAN_SPEED_RANGE } from './settings.js';
 
 const CSS = `
 .settings-btn { position: fixed; left: 10px; bottom: 10px; background: rgba(10, 14, 18, 0.8); color: #dde;
@@ -11,6 +11,8 @@ const CSS = `
 .settings-panel label { display: flex; justify-content: space-between; align-items: center; margin: 6px 0; }
 .settings-panel select { background: #111; color: #fff; border: 1px solid #556; border-radius: 3px; padding: 3px 4px; font: 13px sans-serif; }
 .settings-panel .hint { color: #99a; font-size: 12px; line-height: 1.5; margin-top: 8px; }
+.settings-panel .section { margin-top: 14px; }
+.settings-panel input[type=range] { width: 150px; }
 `;
 
 export function createSettingsPanel(settings) {
@@ -60,6 +62,77 @@ export function createSettingsPanel(settings) {
     '표시기와 함께 빠른: 누르는 동안 범위 표시 → 떼면 시전<br>' +
     '취소: 우클릭, Esc, A, S (빠른 시전은 취소 불가)';
   panel.appendChild(hint);
+
+  // --- 카메라 ---
+  const camTitle = document.createElement('h3');
+  camTitle.className = 'section';
+  camTitle.textContent = '카메라';
+  panel.appendChild(camTitle);
+
+  function selectRow(label, options, getValue, onChange) {
+    const row = document.createElement('label');
+    const name = document.createElement('span');
+    name.textContent = label;
+    const select = document.createElement('select');
+    for (const value in options) {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = options[value];
+      select.appendChild(option);
+    }
+    select.value = getValue();
+    select.addEventListener('change', () => {
+      onChange(select.value);
+      select.blur();
+    });
+    row.append(name, select);
+    panel.appendChild(row);
+    return () => {
+      if (document.activeElement !== select) select.value = getValue();
+    };
+  }
+
+  const refreshMode = selectRow('모드 (Y)', CAMERA_MODES, () => settings.getCamera().mode, (mode) => settings.setCamera({ mode }));
+  const refreshOffset = selectRow(
+    '고정 위치 방식',
+    CAMERA_OFFSET_MODES,
+    () => settings.getCamera().offsetMode,
+    (offsetMode) => settings.setCamera({ offsetMode }),
+  );
+
+  const speedRow = document.createElement('label');
+  const speedName = document.createElement('span');
+  const speed = document.createElement('input');
+  speed.type = 'range';
+  speed.min = String(PAN_SPEED_RANGE.min);
+  speed.max = String(PAN_SPEED_RANGE.max);
+  speed.step = '100';
+  speed.value = String(settings.getCamera().panSpeed);
+  const showSpeed = () => {
+    speedName.textContent = `이동 속도 ${speed.value}`;
+  };
+  showSpeed();
+  speed.addEventListener('input', showSpeed);
+  speed.addEventListener('change', () => {
+    settings.setCamera({ panSpeed: Number(speed.value) });
+    speed.blur();
+  });
+  speedRow.append(speedName, speed);
+  panel.appendChild(speedRow);
+
+  const camHint = document.createElement('div');
+  camHint.className = 'hint';
+  camHint.innerHTML =
+    '고정: 내 캐릭터를 따라감 / 자유: 마우스를 화면 끝에 대면 이동<br>' +
+    'Space·F1: 누르는 동안 내 캐릭터로 / 휠: 확대 (1.0~1.5배)<br>' +
+    '진영별 오프셋: 적 쪽을 더 넓게 / 고정 오프셋: 캐릭터를 조금 아래에';
+  panel.appendChild(camHint);
+
+  // Y 키로 모드를 바꾸면 설정 창에도 반영
+  settings.onChange(() => {
+    refreshMode();
+    refreshOffset();
+  });
 
   button.addEventListener('click', () => {
     panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
