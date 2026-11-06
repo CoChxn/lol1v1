@@ -60,6 +60,15 @@ export function createRenderer(canvas) {
     if (ui.cameraControl) ui.cameraControl.update(focus, me?.team, state.map);
     else camera.lookAt(focus.x, focus.y, state.map.width, state.map.height);
 
+    // 화면이 회전되어 있어도 글자·바를 똑바로: 그 월드 지점에서 회전 없이(확대만) 그린다
+    const upright = (wx, wy, fn) => {
+      const sp = camera.worldToScreen(wx, wy);
+      ctx.save();
+      ctx.setTransform(camera.zoom, 0, 0, camera.zoom, sp.x, sp.y);
+      fn(0, 0);
+      ctx.restore();
+    };
+
     // 월드
     camera.apply(ctx);
     drawArena(ctx, state.map);
@@ -67,10 +76,10 @@ export function createRenderer(canvas) {
     if (me && ui.attackMoveMode) drawRangeRing(ctx, me, focus.x, focus.y, true);
     if (me && ui.aim) drawSkillIndicator(ctx, me, focus.x, focus.y, ui.aim);
     clickMarker.draw(ctx);
-    drawPlayers(ctx, prevState, state, alpha, myId);
-    if (ui.devMode) drawDebugOverlays(ctx, prevState, state, alpha);
+    drawPlayers(ctx, prevState, state, alpha, myId, upright);
+    if (ui.devMode) drawDebugOverlays(ctx, prevState, state, alpha, upright);
     drawProjectiles(ctx, prevState, state, alpha);
-    damageNumbers.draw(ctx);
+    damageNumbers.draw(ctx, upright);
 
     // 화면 고정 UI
     ctx.setTransform(1, 0, 0, 1, 0, 0);

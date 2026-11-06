@@ -1,18 +1,18 @@
 // 카메라 조작 (화면 쪽 기능, 게임 판정과 무관).
 // - 고정 모드(기본): 내 캐릭터에 딱 붙어서 즉시 따라감. 오프셋 적용
-//     진영별 오프셋: 캐릭터를 화면 가운데에서 우리 진영 쪽으로 화면 폭의 15% 비켜 둠 (적 쪽을 더 넓게)
-//       파랑(왼쪽 진영)이면 캐릭터가 왼쪽, 빨강이면 오른쪽
+//     진영별 오프셋: 캐릭터를 화면 가운데에서 우리 진영 쪽으로 화면 폭의 15%만큼(라인 방향) 비켜 둠 (적 쪽을 더 넓게)
+//       파랑(왼쪽 아래 진영)이면 캐릭터가 왼쪽 아래, 빨강이면 오른쪽 위
 //     고정 오프셋: 진영과 상관없이 캐릭터를 화면 가운데에 둠
 // - 자유 모드: 마우스를 화면 끝 15픽셀 안에 대면 그 방향으로 이동
 // - Y: 고정 ↔ 자유 전환 (설정에 저장)
 // - Space / F1: 짧게 누르면 내 캐릭터로 한 번 이동, 누르고 있으면 계속 따라감
-// - 마우스 휠: 화면 가운데 기준 확대 (1.0 ~ 1.5배). 개발자 모드에서는 0.3 ~ 3배
+// - 마우스 휠: 화면 가운데 기준 확대 (1.0 ~ 1.5배). 개발자 모드에서는 0.08 ~ 3배
 import { ZOOM_RANGE } from './settings.js';
 
 export const EDGE_PAN_WIDTH = 15; // 화면 끝 감지 폭 (픽셀)
 const PER_SIDE_OFFSET = 0.15; // 화면 폭 대비
 const ZOOM_STEP = 1.1; // 휠 한 칸
-const DEV_ZOOM_RANGE = { min: 0.3, max: 3 };
+const DEV_ZOOM_RANGE = { min: 0.08, max: 3 };
 const MAX_FRAME_TIME = 0.1;
 
 const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
@@ -116,7 +116,10 @@ export function createCameraControl({ camera, canvas, settings, isDevMode }) {
         const c = lockedCenter(focus, team);
         camera.lookAt(c.x, c.y, map.width, map.height);
       } else {
-        const dir = edgeDirection();
+        // 화면 끝 방향(화면 기준)을 월드 방향으로 바꿔서 이동 (화면이 회전되어 있으므로)
+        const sdir = edgeDirection();
+        const len = Math.hypot(sdir.x, sdir.y) || 1;
+        const dir = camera.screenDirToWorld(sdir.x / len, sdir.y / len);
         const speed = settings.getCamera().panSpeed;
         camera.lookAt(freeX + dir.x * speed * dt, freeY + dir.y * speed * dt, map.width, map.height);
       }

@@ -13,7 +13,7 @@ function circle(ctx, x, y, r, color, dash = [], width = 1.5) {
   ctx.setLineDash([]);
 }
 
-export function drawDebugOverlays(ctx, prevState, state, alpha) {
+export function drawDebugOverlays(ctx, prevState, state, alpha, upright = (wx, wy, fn) => fn(wx, wy)) {
   for (const id in state.players) {
     const p = state.players[id];
     const { x, y } = lerpPlayerPos(prevState.players[id], p, alpha);
@@ -66,12 +66,14 @@ export function drawDebugOverlays(ctx, prevState, state, alpha) {
     drawCasting(ctx, p, x, y);
 
     // 공격 타이머 바와 평타 상태
-    drawAttackTimer(ctx, p, x, y);
-    ctx.font = '12px monospace';
-    ctx.textAlign = 'center';
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
-    ctx.fillText(p.attackState, x, y + p.gameplayRadius + 32);
-    ctx.textAlign = 'start';
+    upright(x, y, (ux, uy) => {
+      drawAttackTimer(ctx, p, ux, uy);
+      ctx.font = '12px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+      ctx.fillText(p.attackState, ux, uy + p.gameplayRadius + 32);
+      ctx.textAlign = 'start';
+    });
   }
 }
 

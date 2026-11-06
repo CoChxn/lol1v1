@@ -19,20 +19,28 @@ export function lerpPlayerPos(prev, curr, alpha) {
   };
 }
 
-export function drawPlayers(ctx, prevState, state, alpha, myId) {
+/**
+ * @param {(wx: number, wy: number, fn: (x: number, y: number) => void) => void} [upright]
+ *   화면이 회전되어 있어도 글자·바를 똑바로 그리기 위한 함수. fn에 그 지점의 그리기 좌표를 넘긴다
+ */
+const NO_ROTATION = (wx, wy, fn) => fn(wx, wy);
+
+export function drawPlayers(ctx, prevState, state, alpha, myId, upright = NO_ROTATION) {
   for (const id in state.players) {
-    drawBody(ctx, prevState, state, alpha, myId, id);
+    drawBody(ctx, prevState, state, alpha, myId, id, upright);
   }
   // 머리 위 UI는 다른 캐릭터 몸체에 가려지지 않도록 나중에 그린다.
   for (const id in state.players) {
     const p = state.players[id];
     const { x, y } = lerpPlayerPos(prevState.players[id], p, alpha);
-    drawOverhead(ctx, p, x, y, id === myId);
-    drawMarks(ctx, p, x, y);
+    upright(x, y, (ux, uy) => {
+      drawOverhead(ctx, p, ux, uy, id === myId);
+      drawMarks(ctx, p, ux, uy);
+    });
   }
 }
 
-function drawBody(ctx, prevState, state, alpha, myId, id) {
+function drawBody(ctx, prevState, state, alpha, myId, id, upright) {
   const p = state.players[id];
   const { x, y } = lerpPlayerPos(prevState.players[id], p, alpha);
   const color = TEAM_COLORS[p.team];
@@ -40,11 +48,13 @@ function drawBody(ctx, prevState, state, alpha, myId, id) {
   // 몸체는 게임플레이 반경(판정 크기)으로 그린다. 이동 충돌 반경은 그리지 않는다.
   const body = p.gameplayRadius;
 
-  // 그림자
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
-  ctx.beginPath();
-  ctx.ellipse(x, y + body * 0.6, body * 0.9, body * 0.4, 0, 0, Math.PI * 2);
-  ctx.fill();
+  // 그림자 (화면 기준 아래쪽)
+  upright(x, y, (ux, uy) => {
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+    ctx.beginPath();
+    ctx.ellipse(ux, uy + body * 0.6, body * 0.9, body * 0.4, 0, 0, Math.PI * 2);
+    ctx.fill();
+  });
 
   // 몸체
   ctx.fillStyle = color.body;

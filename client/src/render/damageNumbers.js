@@ -35,7 +35,8 @@ export function createDamageNumbers() {
         start: performance.now(),
       });
     },
-    draw(ctx) {
+    /** upright: 화면이 회전되어 있어도 글자를 똑바로 (renderer.js) */
+    draw(ctx, upright = (wx, wy, fn) => fn(wx, wy)) {
       const now = performance.now();
       items = items.filter((it) => (now - it.start) / 1000 < DURATION);
       ctx.textAlign = 'center';
@@ -47,20 +48,22 @@ export function createDamageNumbers() {
         ctx.globalAlpha = 1 - t * t;
         ctx.lineWidth = 4;
         ctx.strokeStyle = 'rgba(0, 0, 0, 0.8)';
-        const y = it.y - RISE * t;
-        let textX = it.x;
+        upright(it.x, it.y, (ax, ay) => {
+        const y = ay - RISE * t;
+        let textX = ax;
         // 치명타: 아이콘 + 숫자를 한 묶음으로 가운데 정렬
         if (it.crit && critIcon.complete && critIcon.naturalWidth > 0) {
           const iconH = size * CRIT_ICON_SCALE;
           const iconW = iconH * (critIcon.naturalWidth / critIcon.naturalHeight);
           const textW = ctx.measureText(it.text).width;
-          const left = it.x - (iconW + CRIT_ICON_GAP + textW) / 2;
+          const left = ax - (iconW + CRIT_ICON_GAP + textW) / 2;
           ctx.drawImage(critIcon, left, y - iconH / 2, iconW, iconH);
           textX = left + iconW + CRIT_ICON_GAP + textW / 2;
         }
         ctx.strokeText(it.text, textX, y);
         ctx.fillStyle = it.color;
         ctx.fillText(it.text, textX, y);
+        });
       }
       ctx.globalAlpha = 1;
       ctx.textAlign = 'start';
