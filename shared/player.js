@@ -42,6 +42,7 @@ export function createPlayer({ id, name, team, x, y, championId = DEFAULT_CHAMPI
     attackState: 'idle', // 'idle' | 'chase' | 'windup' | 'cooldown'
     attackTargetId: null, // 평타 명령 대상 ID (추적·반복 공격)
     attackMoveTarget: null, // 어택땅 목적지 {x, y}. 이동하면서 사거리 안의 적을 찾는다
+    attackMoveWalking: false, // 어택땅 목적지로 걸어가는 중인지 (멈추면 도착으로 본다)
     attackWindupTargetId: null, // 지금 선딜레이 중인 평타의 대상 ID
     abilityPower: 0, // 주문력 (AP)
     baseAttackDamage: champ.attack.damage, // 기본 공격력 (챔피언 값). 추가 공격력 = attackDamage − baseAttackDamage

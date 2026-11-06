@@ -15,7 +15,7 @@
 //
 // player·projectile은 update에서 복사한 객체라 직접 바꿔도 된다.
 import { getChampion } from './champions/index.js';
-import { setMoveTarget } from './movement.js';
+import { setMoveTarget, clampToMap } from './movement.js';
 import { rollCrit, dealAttackDamage } from './damage.js';
 import { triggerMarks } from './marks.js';
 import { passiveBonus } from './passive.js';
@@ -84,12 +84,14 @@ export function orderAttack(player, target) {
   }
   player.attackTargetId = target.id;
   player.attackMoveTarget = null;
+  player.attackMoveWalking = false;
 }
 
 /** 평타 명령 해제 (이동·정지 명령 등). 선딜레이 중이었다면 평타도 취소된다. 어택땅도 해제된다. */
 export function cancelAttack(player) {
   player.attackTargetId = null;
   player.attackMoveTarget = null;
+  player.attackMoveWalking = false;
   cancelWindup(player);
 }
 
@@ -117,12 +119,15 @@ export function findNearestEnemyInRange(player, players) {
  */
 export function orderAttackMove(player, players, x, y, map) {
   cancelAttack(player);
-  player.attackMoveTarget = { x, y };
+  // 목적지는 이동 목표와 똑같이 벽 안쪽으로 맞춘다 (벽 밖이면 도착할 수 없어 어택땅이 끝나지 않음)
+  player.attackMoveTarget = clampToMap(x, y, player.pathingRadius, map);
   const enemy = findNearestEnemyInRange(player, players);
   if (enemy) {
     player.attackTargetId = enemy.id;
+    player.attackMoveWalking = false;
   } else {
-    setMoveTarget(player, x, y, map);
+    setMoveTarget(player, player.attackMoveTarget.x, player.attackMoveTarget.y, map);
+    player.attackMoveWalking = true;
   }
 }
 
@@ -148,18 +153,29 @@ export function updateAttackMove(player, players, map) {
   const enemy = findNearestEnemyInRange(player, players);
   if (enemy) {
     player.attackTargetId = enemy.id;
+    player.attackMoveWalking = false;
     return;
   }
 
-  // 적이 없으면 목적지로. 이동 목표가 없는데 아직 멀면(공격하느라 멈췄던 경우) 다시 출발, 가까우면 도착
-  if (!player.target) {
-    const arrived = Math.hypot(dest.x - player.x, dest.y - player.y) <= player.pathingRadius;
-    if (arrived || player.attackWindup !== null) {
-      if (arrived) player.attackMoveTarget = null;
-    } else {
-      setMoveTarget(player, dest.x, dest.y, map);
-    }
+  // 적이 없으면 목적지로
+  if (player.target) return; // 아직 걸어가는 중
+  if (player.attackMoveWalking) {
+    // 목적지로 걸어가다 멈췄다 = 도착 (다른 캐릭터에 막혀 정확히 못 간 경우 포함)
+    endAttackMove(player);
+    return;
   }
+  // 공격하느라 멈췄던 경우: 목적지가 가까우면 끝, 아니면 다시 출발 (선딜레이 중이면 기다림)
+  if (Math.hypot(dest.x - player.x, dest.y - player.y) <= player.pathingRadius) {
+    endAttackMove(player);
+  } else if (player.attackWindup === null) {
+    setMoveTarget(player, dest.x, dest.y, map);
+    player.attackMoveWalking = true;
+  }
+}
+
+function endAttackMove(player) {
+  player.attackMoveTarget = null;
+  player.attackMoveWalking = false;
 }
 
 /**

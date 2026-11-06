@@ -166,7 +166,18 @@ if (!failed) {
     s = step(s, [{ playerId: 'a', type: 'stop' }]);
     if (s.players.a.attackWindup !== null || s.players.a.attackTimer !== 0) throw new Error('정지 명령으로 선딜레이가 취소되지 않았습니다');
 
-    console.log('✓ 어택땅·정지 (가장 가까운 적 선택, 이동 중 적 탐색, 대상 사망 후 재출발, 정지)');
+    // 벽 밖·막힌 목적지: 멈추면 어택땅이 끝난다 (목적지가 남아 있으면 안 됨)
+    s = duel(id, 3000);
+    s = step(s, [{ playerId: 'a', type: 'attackMove', x: -500, y: blue.y }]);
+    for (let i = 0; i < 90; i++) s = step(s);
+    if (s.players.a.attackMoveTarget) throw new Error('벽 밖을 어택땅했는데 벽 앞에서 멈춘 뒤에도 어택땅이 끝나지 않았습니다');
+    s = duel(id, 3000);
+    s = addPlayer(s, createPlayer({ id: 'ally', name: 'Ally', team: 'blue', x: blue.x + 400, y: blue.y, championId: id, isDummy: true }));
+    s = step(s, [{ playerId: 'a', type: 'attackMove', x: blue.x + 400, y: blue.y }]);
+    for (let i = 0; i < 90; i++) s = step(s);
+    if (s.players.a.attackMoveTarget) throw new Error('아군에 막힌 목적지에서 멈춘 뒤에도 어택땅이 끝나지 않았습니다');
+
+    console.log('✓ 어택땅·정지 (가장 가까운 적 선택, 이동 중 적 탐색, 대상 사망 후 재출발, 벽 밖·막힌 목적지에서 종료, 정지)');
   } catch (e) {
     fail(`어택땅·정지: ${e.message}`);
   }
