@@ -64,6 +64,7 @@ export function createPlayer({ id, name, team, x, y, championId = DEFAULT_CHAMPI
     unitType: 'champion', // 유닛 종류 (나중에 'minion', 'monster' 등)
     marks: [], // 이 캐릭터에 붙은 표식 [{ ownerId, skill, remaining }] (marks.js)
     revealed: 0, // 시야가 밝혀진 남은 시간 (초). 시야 기능이 생기면 사용
+    passive: { stacks: 0, remaining: 0 }, // 패시브 중첩과 남은 시간 (passive.js)
     infiniteMana: false, // true면 마나가 줄지 않는다
     dummyMode: 'idle', // [허수아비] 'idle' | 'patrol' | 'attack' (dummyAI.js)
     patrolAnchor: isDummy ? { x, y } : null, // [허수아비] 왔다 갔다 기준 위치

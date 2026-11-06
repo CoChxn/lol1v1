@@ -1,15 +1,22 @@
 // 화면 아래 스킬 칸: 키, 이름, 레벨, 마나, 쿨타임 숫자.
-import { SKILL_KEYS, getSkillData, levelValue, castBlockReason } from '@lol1v1/shared';
+import { SKILL_KEYS, getSkillData, levelValue, castBlockReason, getPassiveData } from '@lol1v1/shared';
 
 const SIZE = 64;
 const GAP = 10;
 
 export function drawSkillBar(ctx, width, height, player) {
   const keys = SKILL_KEYS.filter((k) => player.skills[k]);
-  if (!keys.length) return;
-  const total = keys.length * SIZE + (keys.length - 1) * GAP;
+  const passive = getPassiveData(player);
+  const slots = keys.length + (passive ? 1 : 0);
+  if (!slots) return;
+  const total = slots * SIZE + (slots - 1) * GAP;
   let x = Math.round(width / 2 - total / 2);
   const y = height - SIZE - 28;
+
+  if (passive) {
+    drawPassiveSlot(ctx, x, y, player, passive);
+    x += SIZE + GAP;
+  }
 
   for (const key of keys) {
     const data = getSkillData(player, key);
@@ -71,4 +78,37 @@ export function drawSkillBar(ctx, width, height, player) {
     ctx.textBaseline = 'alphabetic';
     x += SIZE + GAP;
   }
+}
+
+/** 패시브 칸: 중첩 수(가운데), 남은 시간 막대(아래), 이름 */
+function drawPassiveSlot(ctx, x, y, player, data) {
+  const { stacks, remaining } = player.passive;
+  const active = stacks > 0;
+  ctx.fillStyle = 'rgba(15, 20, 30, 0.9)';
+  ctx.fillRect(x, y, SIZE, SIZE);
+  ctx.fillStyle = active ? 'rgba(150, 110, 40, 0.95)' : 'rgba(55, 50, 45, 0.9)';
+  ctx.fillRect(x + 3, y + 3, SIZE - 6, SIZE - 6);
+  ctx.strokeStyle = active && stacks >= data.maxStacks ? '#ffd84a' : '#665';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(x, y, SIZE, SIZE);
+
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = active ? '#fff' : '#998';
+  ctx.font = 'bold 22px sans-serif';
+  ctx.fillText(active ? String(stacks) : 'P', x + SIZE / 2, y + SIZE / 2 - 4);
+
+  // 남은 시간 막대
+  if (active) {
+    const ratio = Math.min(remaining / data.duration, 1);
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+    ctx.fillRect(x + 5, y + SIZE - 10, SIZE - 10, 5);
+    ctx.fillStyle = '#ffd84a';
+    ctx.fillRect(x + 5, y + SIZE - 10, (SIZE - 10) * ratio, 5);
+  }
+  ctx.font = '11px sans-serif';
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillStyle = '#ccd';
+  ctx.fillText(data.name, x + SIZE / 2, y + SIZE + 15);
+  ctx.textAlign = 'start';
 }

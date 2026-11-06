@@ -12,6 +12,7 @@ export * from './damage.js';
 export * from './debug.js';
 export * from './skills.js';
 export * from './marks.js';
+export * from './passive.js';
 export * from './commands.js';
 export * from './dummyAI.js';
 export * from './update.js';

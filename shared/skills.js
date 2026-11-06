@@ -21,6 +21,7 @@ import { cancelWindup } from './attack.js';
 import { dealSkillDamage, damageRaw } from './damage.js';
 import { clampToMap, resolveOverlap } from './movement.js';
 import { applyMark, triggerMarks } from './marks.js';
+import { onSkillHit } from './passive.js';
 
 const EPSILON = 1e-6;
 
@@ -144,6 +145,8 @@ function applyOnHit(proj, owner, target, ctx) {
   }
   // 이 스킬로 시전자의 표식이 터진다 (같은 스킬의 표식은 제외)
   triggerMarks(owner, target, { by: 'skill', skill: proj.skill, manaCost: proj.manaCost }, ctx);
+  // 패시브: 스킬이 적을 맞힘 (맞은 적 하나당 1번)
+  onSkillHit(owner, target);
 }
 
 /**

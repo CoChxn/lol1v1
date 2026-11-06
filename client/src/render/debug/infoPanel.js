@@ -25,7 +25,7 @@ function unitLines(label, p) {
     `  attack speed ${p.attackSpeed.toFixed(3)} (base ${p.baseAttackSpeed.toFixed(3)})  T ${(1 / p.attackSpeed).toFixed(3)}s  W ${computeWindup(atk, p.attackSpeed, p.baseAttackSpeed).toFixed(3)}s`,
     `  attack [${p.attackState}]${p.attackMoveTarget ? ' attack-move' : ''}  AD ${p.attackDamage}  range ${atk.range} (+${WINDUP_CANCEL_LEEWAY})`,
     `  skills ${Object.entries(p.skills).map(([k, st]) => `${k} Lv${st.level} cd ${st.cooldown.toFixed(2)}`).join('  ') || '-'}${p.casting ? `  [시전 중 ${p.casting.skill} ${p.casting.remaining.toFixed(2)}s]` : ''}  AP ${p.abilityPower}  bonus AD ${p.attackDamage - p.baseAttackDamage}${p.marks.length ? `  [표식 ${p.marks.map((m) => `${m.skill} ${m.remaining.toFixed(1)}s`).join(', ')}]` : ''}`,
-    `  선입력 ${formatQueued(p)}`,
+    `  선입력 ${formatQueued(p)}  |  패시브 ${p.passive?.stacks ?? 0}중첩${p.passive?.stacks ? ` (${p.passive.remaining.toFixed(1)}초)` : ''}`,
     `  effects ${effects}${p.invulnerable ? '  [무적]' : ''}${p.infiniteMana ? '  [무한 마나]' : ''}${p.noCooldown ? '  [쿨타임 없음]' : ''}${p.isDummy ? `  [행동: ${p.dummyMode}]` : ''}`,
   ];
 }

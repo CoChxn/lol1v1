@@ -152,4 +152,14 @@ export default {
 
   // 마법 방어
   magicResist: 33,
+
+  // 패시브 마력 공명: 스킬이 적을 맞힐 때마다(맞은 적 하나당) 1중첩, 중첩당 추가 공격속도 +10%
+  //   최대 5중첩, 6초 유지. 새로 쌓이면 모든 중첩이 6초로 다시 시작하고, 끝나면 한꺼번에 사라짐
+  passive: {
+    name: '마력 공명',
+    trigger: 'skillHit',
+    maxStacks: 5,
+    duration: 6,
+    perStack: { kind: 'attackSpeed', value: 0.1 },
+  },
 };

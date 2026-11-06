@@ -141,6 +141,24 @@ const SCHEMA = {
     },
   },
   skills: { type: 'skills', optional: true },
+  // 패시브 (docs/CHAMPION_STATS.md)
+  passive: {
+    type: 'object',
+    optional: true,
+    fields: {
+      name: { type: 'string' },
+      trigger: { type: 'string', oneOf: ['skillHit'] }, // skillHit: 스킬이 적을 맞힐 때 (맞은 적 하나당)
+      maxStacks: { type: 'number', min: 1 },
+      duration: { type: 'number', minExclusive: 0 },
+      perStack: {
+        type: 'object',
+        fields: {
+          kind: { type: 'string', oneOf: ['attackSpeed'] }, // attackSpeed: 추가 공격속도 (공격속도 공식의 x)
+          value: { type: 'number' },
+        },
+      },
+    },
+  },
 };
 
 function checkFields(data, schema, path, errors, ctx = { levels: SKILL_MAX_LEVEL }) {

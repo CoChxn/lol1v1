@@ -660,7 +660,72 @@ if (!failed) {
     }
   }
 
-  // 13. 근접 평타: 투사체 없이 즉시 적중 (검사용 임시 챔피언)
+  // 13. 패시브 (trigger skillHit): 맞은 적 하나당 1중첩, 최대 중첩, 지속시간 갱신·만료, 표식 터짐·평타는 제외, 공격속도 반영
+  for (const id in CHAMPIONS) {
+    const pd = CHAMPIONS[id].passive;
+    if (pd?.trigger !== 'skillHit') continue;
+    try {
+      const skills = CHAMPIONS[id].skills ?? {};
+      const { blue } = createGameState().map.spawns;
+      const patch = (s, pid, p) => ({ ...s, players: { ...s.players, [pid]: { ...s.players[pid], ...p } } });
+      const run = (s, n) => {
+        for (let i = 0; i < n; i++) s = step(s);
+        return s;
+      };
+      const castAt = (s, k, x = blue.x + 3000, y = blue.y) => step(s, [{ playerId: 'a', type: 'cast', skill: k, x, y }]);
+      // 쿨타임·마나 없음, 상대는 무적(여러 번 맞혀도 죽지 않게. 무적이어도 적중은 적중)
+      const noCd = (s) => patch(patch(s, 'a', { noCooldown: true, infiniteMana: true }), 'b', { invulnerable: true });
+      const stacks = (s) => s.players.a.passive.stacks;
+      // 적을 맞히는 직선 투사체 스킬 하나 (처음 맞은 적만)
+      const firstKey = Object.keys(skills).find((k) => skills[k].effects.some((e) => e.type === 'projectile' && e.collision === 'first' && e.onHit.some((h) => h.type === 'damage')));
+      const pierceKey = Object.keys(skills).find((k) => skills[k].effects.some((e) => e.type === 'projectile' && e.collision === 'pierce'));
+      const markKey = Object.keys(skills).find((k) => skills[k].effects.some((e) => e.onHit?.some((h) => h.type === 'applyMark')));
+
+      // 평타로는 쌓이지 않음
+      let s = run(step(duel(id), [attackB]), 60);
+      if (stacks(s) !== 0) throw new Error('평타로 중첩이 쌓였습니다');
+      if (firstKey) {
+        // 스킬 적중 → 1중첩, 시간 = duration
+        s = run(castAt(noCd(duel(id, 400)), firstKey), 30);
+        if (stacks(s) !== 1) throw new Error(`스킬 적중 후 중첩이 ${stacks(s)}입니다 (예상 1)`);
+        // 공격속도: 기본 × (1 + 중첩 × 값)
+        s = step(s);
+        const expectAs = s.players.a.baseAttackSpeed * (1 + pd.perStack.value * stacks(s));
+        if (Math.abs(s.players.a.attackSpeed - expectAs) > 1e-9) throw new Error(`공격속도가 ${s.players.a.attackSpeed}입니다 (예상 ${expectAs})`);
+        // 최대 중첩
+        for (let i = 0; i < pd.maxStacks + 2; i++) s = run(castAt(s, firstKey), 25);
+        if (stacks(s) !== pd.maxStacks) throw new Error(`최대 중첩을 넘었거나 못 미칩니다 (${stacks(s)})`);
+        // 시간 갱신: 거의 끝날 때 다시 맞히면 duration으로
+        s = run(s, Math.floor((pd.duration - 0.5) * 30));
+        s = run(castAt(s, firstKey), 25);
+        if (!(s.players.a.passive.remaining > pd.duration - 1)) throw new Error('다시 맞혔는데 지속시간이 갱신되지 않았습니다');
+        // 만료: 한꺼번에 사라짐
+        s = run(s, Math.ceil(pd.duration * 30) + 2);
+        if (stacks(s) !== 0) throw new Error('지속시간이 끝났는데 중첩이 남아 있습니다');
+      }
+      if (pierceKey) {
+        // 관통 스킬로 적 3명 → 3중첩
+        s = noCd(duel(id, 400));
+        s = addPlayer(s, createPlayer({ id: 'c', name: 'C', team: 'red', x: blue.x + 700, y: blue.y, championId: id, isDummy: true }));
+        s = addPlayer(s, { ...createPlayer({ id: 'm', name: 'M', team: 'red', x: blue.x + 1000, y: blue.y, championId: id, isDummy: true }), unitType: 'minion' });
+        s = run(castAt(s, pierceKey), 60);
+        if (stacks(s) !== 3) throw new Error(`관통 스킬로 적 3명(미니언 포함)을 맞혔는데 중첩이 ${stacks(s)}입니다`);
+      }
+      if (markKey && firstKey) {
+        // 표식 스킬: 부착 때 1중첩, 다른 스킬로 터뜨릴 때는 그 스킬 적중 1중첩만 (터짐은 제외) → 2
+        s = noCd(duel(id, 400));
+        s = run(castAt(s, markKey), 30);
+        if (stacks(s) !== 1) throw new Error(`표식 부착 후 중첩이 ${stacks(s)}입니다 (예상 1)`);
+        s = run(castAt(s, firstKey), 30);
+        if (stacks(s) !== 2) throw new Error(`표식을 다른 스킬로 터뜨린 뒤 중첩이 ${stacks(s)}입니다 (예상 2, 터짐은 제외)`);
+      }
+      console.log(`✓ ${id} 패시브 ${pd.name} (맞은 적당 1중첩, 최대 ${pd.maxStacks}, ${pd.duration}초 갱신·만료, 평타·표식 터짐 제외, 중첩당 ${pd.perStack.kind} +${pd.perStack.value})`);
+    } catch (e) {
+      fail(`${id} 패시브: ${e.message}`);
+    }
+  }
+
+  // 14. 근접 평타: 투사체 없이 즉시 적중 (검사용 임시 챔피언)
   try {
     const base = CHAMPIONS[Object.keys(CHAMPIONS)[0]];
     CHAMPIONS.__melee = { ...base, attack: { type: 'melee', range: 125, damage: 10, attackSpeed: 1, windupRatio: 0.25 } };

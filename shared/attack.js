@@ -18,6 +18,7 @@ import { getChampion } from './champions/index.js';
 import { setMoveTarget } from './movement.js';
 import { rollCrit, dealAttackDamage } from './damage.js';
 import { triggerMarks } from './marks.js';
+import { passiveBonus } from './passive.js';
 import { TICK_DT } from './constants.js';
 
 // 소수점 오차로 타이머가 한 틱 더 남는 것을 막기 위한 여유값
@@ -54,7 +55,7 @@ export function computeAttackSpeed(player) {
   const atk = getChampion(player.championId).attack;
   const base = player.baseAttackSpeed ?? atk.attackSpeed;
   const ratio = atk.attackSpeedRatio ?? base;
-  let bonus = player.bonusAttackSpeed ?? 0;
+  let bonus = (player.bonusAttackSpeed ?? 0) + passiveBonus(player, 'attackSpeed');
   for (const e of player.effects) {
     if (e.kind === 'attackSpeed') bonus += e.value;
   }
