@@ -125,7 +125,7 @@ export function createSettingsPanel(settings) {
   camHint.innerHTML =
     '고정: 내 캐릭터를 따라감 / 자유: 마우스를 화면 끝에 대면 이동<br>' +
     'Space·F1: 누르는 동안 내 캐릭터로 / 휠: 확대 (1.0~1.5배)<br>' +
-    '진영별 오프셋: 적 쪽을 더 넓게 / 고정 오프셋: 캐릭터를 조금 아래에';
+    '진영별 오프셋: 적 쪽을 더 넓게 / 고정 오프셋: 캐릭터를 화면 가운데에';
   panel.appendChild(camHint);
 
   // Y 키로 모드를 바꾸면 설정 창에도 반영

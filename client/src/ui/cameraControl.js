@@ -2,7 +2,7 @@
 // - 고정 모드(기본): 내 캐릭터에 딱 붙어서 즉시 따라감. 오프셋 적용
 //     진영별 오프셋: 캐릭터를 화면 가운데에서 우리 진영 쪽으로 화면 폭의 15% 비켜 둠 (적 쪽을 더 넓게)
 //       파랑(왼쪽 진영)이면 캐릭터가 왼쪽, 빨강이면 오른쪽
-//     고정 오프셋: 진영과 상관없이 캐릭터를 화면 높이의 10%만큼 아래에 둠
+//     고정 오프셋: 진영과 상관없이 캐릭터를 화면 가운데에 둠
 // - 자유 모드: 마우스를 화면 끝 15픽셀 안에 대면 그 방향으로 이동
 // - Y: 고정 ↔ 자유 전환 (설정에 저장)
 // - Space / F1: 짧게 누르면 내 캐릭터로 한 번 이동, 누르고 있으면 계속 따라감
@@ -11,7 +11,6 @@ import { ZOOM_RANGE } from './settings.js';
 
 export const EDGE_PAN_WIDTH = 15; // 화면 끝 감지 폭 (픽셀)
 const PER_SIDE_OFFSET = 0.15; // 화면 폭 대비
-const FIXED_OFFSET = 0.1; // 화면 높이 대비
 const ZOOM_STEP = 1.1; // 휠 한 칸
 const DEV_ZOOM_RANGE = { min: 0.3, max: 3 };
 const MAX_FRAME_TIME = 0.1;
@@ -88,9 +87,7 @@ export function createCameraControl({ camera, canvas, settings, isDevMode }) {
   /** 고정 모드에서 화면 가운데에 둘 지점 (캐릭터 위치 + 오프셋, 월드 단위) */
   function lockedCenter(focus, team) {
     const { offsetMode } = settings.getCamera();
-    if (offsetMode === 'fixed') {
-      return { x: focus.x, y: focus.y - (camera.viewHeight * FIXED_OFFSET) / camera.zoom };
-    }
+    if (offsetMode === 'fixed') return { x: focus.x, y: focus.y };
     const side = team === 'red' ? -1 : 1;
     return { x: focus.x + (side * camera.viewWidth * PER_SIDE_OFFSET) / camera.zoom, y: focus.y };
   }
