@@ -9,7 +9,7 @@ import { submitCommand, runQueuedCommands } from './commands.js';
 import { tickSummonerCooldowns } from './summoners.js';
 import { updateAttack, updateAttackMove, updateProjectile, computeAttackSpeed } from './attack.js';
 import { tickTurret, updateTurret, updateTurretShot, checkTurretDestroyed } from './turret.js';
-import { updateWaves, createMinion, queueWave, waveStateAt } from './minions.js';
+import { updateWaves, createMinion, queueWave, waveStateAt, updateMinion, updateMinionShot, updateRecentHits } from './minions.js';
 
 // 게임 전체에 적용되는 개발자 입력: { type: 'debug', action, value? }
 //   skipTime: value초만큼 게임 시간 건너뛰기 / setMinionSpawning: 웨이브 생성 켜기·끄기
@@ -62,11 +62,17 @@ export function update(state, inputs, dt) {
   inputs = inputs.filter((i) => !worldInputs.includes(i));
 
   const minions = {};
-  for (const id in minionsIn) minions[id] = { ...minionsIn[id] };
+  for (const id in minionsIn) minions[id] = { ...minionsIn[id], marks: minionsIn[id].marks.map((mk) => ({ ...mk })) };
   const turrets = {};
   for (const id in state.turrets ?? {}) turrets[id] = { ...state.turrets[id] };
-  // 평타·포탑의 대상 후보: 챔피언 + 포탑 (스킬은 players만 보므로 포탑을 맞히지 않는다)
-  const units = { ...players, ...turrets };
+  // 대상 후보 (같은 객체를 가리킨다)
+  // - units: 평타·미니언의 대상 (챔피언 + 포탑 + 미니언)
+  // - skillUnits: 스킬의 대상 (챔피언 + 미니언). 포탑은 스킬에 맞지 않는다
+  // - turretUnits: 포탑의 대상 (챔피언). 포탑과 미니언의 관계는 M3에서
+  const units = { ...players, ...turrets, ...minions };
+  const skillUnits = { ...players, ...minions };
+  const turretUnits = { ...players, ...turrets };
+  const recentHits = state.recentHits ?? [];
   let projectiles = state.projectiles.map((p) => ({ ...p }));
   let nextId = state.nextId;
   // 허수아비 행동(개발자 모드)이 만든 입력도 일반 입력과 똑같이 처리한다
@@ -89,6 +95,8 @@ export function update(state, inputs, dt) {
   for (const spec of updateWaves(waves, time + dt, state.map)) {
     const m = createMinion({ id: `minion-${nextId++}`, ...spec });
     minions[m.id] = m;
+    units[m.id] = m;
+    skillUnits[m.id] = m;
   }
 
   // 1. 선입력 → 새 입력 처리 (commands.js: 행동 불가 중 선입력 / 쿨타임 선입력)
@@ -113,7 +121,7 @@ export function update(state, inputs, dt) {
   // 2. 스킬 시전 진행 (시전 시간이 끝나면 발동하고, 그 틱에 바로 시전 중 선입력을 실행)
   for (const id in players) {
     const wasCasting = !!players[id].casting;
-    for (const shot of updateCasting(players[id], dt, players, state.map)) projectiles.push({ id: nextId++, ...shot });
+    for (const shot of updateCasting(players[id], dt, skillUnits, state.map)) projectiles.push({ id: nextId++, ...shot });
     if (wasCasting && !players[id].casting) runQueuedCommands(players, players[id], state.map, units);
   }
 
@@ -124,7 +132,13 @@ export function update(state, inputs, dt) {
     if (shot) projectiles.push({ id: nextId++, ...shot });
   }
 
-  // 3. 이동 (챔피언·미니언은 서로 몸으로 막는다)
+  // 2-2. 미니언: 대상 선택, 추적, 공격
+  for (const id in minions) {
+    const shot = updateMinion(minions[id], units, recentHits, state.map, dt, ctx);
+    if (shot) projectiles.push({ id: nextId++, ...shot });
+  }
+
+  // 3. 이동 (챔피언끼리는 몸으로 막는다. 미니언은 항상 유체화)
   const bodies = { ...players, ...minions };
   for (const id in players) {
     movePlayer(players[id], bodies, dt, state.map);
@@ -135,16 +149,26 @@ export function update(state, inputs, dt) {
 
   // 4. 투사체 이동·적중
   projectiles = projectiles.filter((proj) => {
-    if (proj.kind === 'skillshot') return updateSkillshot(proj, players, dt, ctx);
-    if (proj.kind === 'homingSkill') return updateHomingSkill(proj, players, dt, ctx);
+    if (proj.kind === 'skillshot') return updateSkillshot(proj, skillUnits, dt, ctx);
+    if (proj.kind === 'homingSkill') return updateHomingSkill(proj, skillUnits, dt, ctx);
     if (proj.kind === 'turret') return updateTurretShot(proj, units, dt, ctx);
+    if (proj.kind === 'minion') return updateMinionShot(proj, units, dt, ctx);
     return updateProjectile(proj, units, dt, ctx);
   });
+
+  // 4-1. 체력이 0이 된 미니언은 사라진다 (막타: 이번 틱 마지막으로 피해를 준 유닛)
+  for (const id in minions) {
+    if (minions[id].hp > 0) continue;
+    const last = ctx.events.filter((ev) => ev.type === 'damage' && ev.targetId === id && ev.amount > 0).pop();
+    ctx.events.push({ type: 'minionDeath', minionId: id, team: minions[id].team, minionType: minions[id].minionType, killerId: last?.sourceId ?? null });
+    delete minions[id];
+    delete units[id];
+  }
 
   // 5. 포탑: 파괴 확인 → 대상 선택(이번 틱 피해로 어그로 전환) → 포착 → 선딜레이 → 발사 (투사체는 다음 틱부터 움직인다)
   for (const id in turrets) checkTurretDestroyed(turrets[id], ctx);
   for (const id in turrets) {
-    const shot = updateTurret(turrets[id], units, ctx.events, dt);
+    const shot = updateTurret(turrets[id], turretUnits, ctx.events, dt);
     if (shot) projectiles.push({ id: nextId++, ...shot });
   }
 
@@ -156,6 +180,7 @@ export function update(state, inputs, dt) {
     turrets,
     minions,
     waves,
+    recentHits: updateRecentHits(recentHits, ctx.events, time + dt),
     projectiles,
     nextId,
     rngSeed: ctx.rng.seed,

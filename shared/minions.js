@@ -1,4 +1,4 @@
-// 미니언: 웨이브 생성, 업그레이드 능력치, 라인 이동. (M1: 공격·대상 선택은 아직 없음)
+// 미니언: 웨이브 생성, 업그레이드 능력치, 라인 이동, 공격과 대상 선택.
 //
 // - 웨이브: 0:30 첫 웨이브. 14분 전 30초마다, 14분부터 25초마다, 다음 웨이브가 30분을 넘으면 20초마다
 //   (13:30 → 14:00 → 14:25 … 29:25 → 29:50 → 30:10)
@@ -11,13 +11,28 @@
 // - 이동: 라인을 따라 상대 진영 끝까지 일직선으로 가서 멈춘다.
 //   항상 유체화 상태라 챔피언·미니언과는 서로 통과하고, 포탑 지형·벽에만 막힌다.
 //
-// 아직 없는 것: 공격·대상 선택(M2), 포탑과의 관계(M3), 첫 웨이브 특수 동작·골드/경험치(M4),
+// - 공격: 챔피언 평타와 같은 흐름 (선딜레이 → 발사 → 쿨다운). 공격 타이머는 선딜레이 시작과 함께 시작.
+//   근접은 즉시 적중, 원거리·대포는 유도 투사체.
+//   피해: 챔피언·포탑에게 60% (대포 → 포탑 84%), 미니언끼리는 대상 현재 체력 비율 추가 피해.
+// - 대상 우선순위 (위가 높음). '공격 중' = 최근 attackingMemory초 안에 피해를 줌
+//   1) 아군 챔피언을 공격하는 적 챔피언 (helpRange까지)   2) 아군 챔피언을 공격하는 적 미니언
+//   3) 아군 미니언을 공격하는 적 미니언   4) 아군 미니언을 공격하는 적 포탑
+//   5) 가장 가까운 적 미니언   6) 가장 가까운 적 챔피언   7) 가장 가까운 적 포탑
+//   2~7은 searchRange 안. 같은 순위면 가까운 것.
+// - 대상 유지: 한 번 정하면 더 높은 순위가 생길 때만 바꾼다. 다시 고르는 때: 평타를 쏠 때마다, 대상을 잃었을 때
+//   대상을 잃는 때: 죽음·타겟 불가·leashRange보다 멀어짐
+// - 대상이 없으면 라인 끝으로 걷는다.
+//
+// 아직 없는 것: 포탑과의 관계(M3), 첫 웨이브 특수 동작·골드/경험치(M4),
 // 이동속도 상승·어그로(나중에 구현할 것: docs/ROADMAP.md)
 //
 // minion은 update에서 복사한 객체라 직접 바꿔도 된다.
 import { laneToWorld } from './map.js';
 import { SPAWN_INSET } from './constants.js';
 import { setMoveTarget } from './movement.js';
+import { canAttack, edgeDistance } from './attack.js';
+import { applyDamage } from './combat.js';
+import { mitigate } from './damage.js';
 
 const EPSILON = 1e-6;
 
@@ -29,6 +44,8 @@ export const MINIONS = {
     hp: { base: 430, early: 35, late: 35, max: 1550 },
     attackDamage: { base: 11, early: 0, late: 3, max: 80 },
     attackSpeed: 1.25,
+    windup: 0.2, // 선딜레이 (초)
+    projectileSpeed: null, // 없으면 근접: 즉시 적중
     range: 110,
     armor: 0,
     magicResist: 0,
@@ -36,7 +53,7 @@ export const MINIONS = {
     pathingRadius: 35.7437,
     gold: { base: 20, perUpgrade: 0 },
     xp: 62,
-    minionBonusDamage: 0.02, // 미니언끼리 추가 피해 (대상 현재 체력 비율) — M2
+    minionBonusDamage: 0.02, // 미니언끼리 추가 피해 (대상 현재 체력 비율)
     turretDamage: 0.45, // 포탑에게 받는 피해 (최대 체력 비율) — M3
   },
   caster: {
@@ -44,6 +61,8 @@ export const MINIONS = {
     hp: { base: 275, early: 9, late: 12, max: 600 },
     attackDamage: { base: 19.5, early: 1.5, late: 4.25, max: 125 },
     attackSpeed: 0.667,
+    windup: 0.3,
+    projectileSpeed: 650,
     range: 550,
     armor: 0,
     magicResist: 0,
@@ -59,6 +78,8 @@ export const MINIONS = {
     hp: { base: 750, early: 85, late: 85, max: 5850 },
     attackDamage: { base: 36, early: 1.5, late: 4, max: 126 },
     attackSpeed: 1.0,
+    windup: 0.3,
+    projectileSpeed: 1200,
     range: 300,
     armor: 0,
     magicResist: 0,
@@ -72,6 +93,19 @@ export const MINIONS = {
 };
 
 export const MINION_TYPES = Object.keys(MINIONS);
+
+// 미니언 전투 규칙
+export const MINION_COMBAT = {
+  damageVsChampion: 0.6, // 미니언 → 챔피언 피해 배율
+  damageVsStructure: 0.6, // 미니언 → 포탑 피해 배율
+  cannonVsTurret: 0.84, // 대포 미니언 → 포탑 (위 0.6 대신)
+  searchRange: 500, // 대상 탐색 (미니언 중심 ~ 대상 가장자리)
+  helpRange: 1000, // 아군 챔피언을 공격하는 적 챔피언(우선순위 1)은 여기까지 찾는다
+  leashRange: 1000, // 대상이 이보다 멀어지면 놓는다
+  attackingMemory: 2, // 최근 이 시간(초) 안에 피해를 줬으면 '공격 중'으로 본다
+  windupCancelLeeway: 100, // 선딜레이 중 대상이 사거리 + 이 값보다 멀어지면 취소
+  projectileRadius: 10,
+};
 
 export const MINION_WAVES = {
   firstWave: 30, // 첫 웨이브 (초)
@@ -197,6 +231,15 @@ export function createMinion({ id, team, type, upgrade, wave, map }) {
     moveSpeed: MINION_WAVES.moveSpeed,
     gold: data.gold.base + data.gold.perUpgrade * Math.max(0, upgrade - 1),
     xp: data.xp,
+    windupTime: data.windup,
+    projectileSpeed: data.projectileSpeed,
+    minionBonusDamage: data.minionBonusDamage,
+    attackTargetId: null, // 공격 대상
+    attackState: 'idle', // 'idle' | 'chase' | 'windup' | 'cooldown'
+    attackTimer: 0, // 공격 타이머 남은 시간
+    attackTimerTotal: 0,
+    windupTimer: null, // 선딜레이 남은 시간
+    windupTargetId: null,
     target: null,
     casting: null,
     effects: [],
@@ -206,8 +249,8 @@ export function createMinion({ id, team, type, upgrade, wave, map }) {
     invulnerable: false,
   };
   // 목적지: 상대 진영 라인 끝 (도착하면 멈춘다)
-  const end = laneToWorld(map, team === 'blue' ? L : 0, 0);
-  setMoveTarget(m, end.x, end.y, map);
+  m.laneEnd = laneToWorld(map, team === 'blue' ? L : 0, 0); // null이면 제자리 (검사용)
+  setMoveTarget(m, m.laneEnd.x, m.laneEnd.y, map);
   return m;
 }
 
@@ -226,4 +269,199 @@ export function updateWaves(waves, time, map) {
   if (!ready.length) return [];
   waves.queue = waves.queue.filter((q) => q.spawnAt > time + EPSILON);
   return ready.map((q) => ({ team: q.team, type: q.type, upgrade: q.upgrade, wave: q.wave, map }));
+}
+
+// ---------------------------------------------------------------------------
+// 전투
+
+/** 최근 피해 기록 { sourceId, targetId, time } 중 a가 b 쪽(팀·종류 조건)을 공격 중인지 */
+function isAttacking(recent, attackerId, victimFilter) {
+  return recent.some((h) => h.sourceId === attackerId && victimFilter(h.targetId));
+}
+
+/** 미니언 중심 ~ 대상 가장자리 */
+function reach(m, u) {
+  return Math.hypot(u.x - m.x, u.y - m.y) - u.gameplayRadius;
+}
+
+/**
+ * 대상 u의 우선순위 (작을수록 높음). 대상이 될 수 없거나 탐색 범위 밖이면 Infinity
+ * @param {object[]} recent  최근 피해 기록
+ */
+export function minionPriority(m, u, units, recent) {
+  if (!canAttack(m, u)) return Infinity;
+  const kind = u.unitType ?? 'champion';
+  const allyOf = (kind2) => (id) => {
+    const v = units[id];
+    return !!v && v.team === m.team && (v.unitType ?? 'champion') === kind2;
+  };
+  const d = reach(m, u);
+  if (kind === 'champion' && d <= MINION_COMBAT.helpRange && isAttacking(recent, u.id, allyOf('champion'))) return 1;
+  if (d > MINION_COMBAT.searchRange) return Infinity;
+  if (kind === 'minion' && isAttacking(recent, u.id, allyOf('champion'))) return 2;
+  if (kind === 'minion' && isAttacking(recent, u.id, allyOf('minion'))) return 3;
+  if (kind === 'turret' && isAttacking(recent, u.id, allyOf('minion'))) return 4;
+  if (kind === 'minion') return 5;
+  if (kind === 'champion') return 6;
+  if (kind === 'turret') return 7;
+  return Infinity;
+}
+
+/** 가장 높은 우선순위 대상 (같은 순위면 가까운 것) */
+function bestTarget(m, units, recent) {
+  let best = null;
+  let bestRank = Infinity;
+  let bestDist = Infinity;
+  for (const id in units) {
+    const u = units[id];
+    const rank = minionPriority(m, u, units, recent);
+    if (rank === Infinity) continue;
+    const d = reach(m, u);
+    if (rank < bestRank || (rank === bestRank && d < bestDist)) {
+      best = u;
+      bestRank = rank;
+      bestDist = d;
+    }
+  }
+  return best ? { unit: best, rank: bestRank } : null;
+}
+
+/** 지금 대상보다 높은 순위가 있으면 바꾼다 (같은 순위로는 바꾸지 않음) */
+function reevaluate(m, units, recent) {
+  const best = bestTarget(m, units, recent);
+  if (!best) return;
+  const cur = m.attackTargetId && units[m.attackTargetId];
+  const curRank = cur ? minionPriority(m, cur, units, recent) : Infinity;
+  if (!cur || best.rank < curRank) m.attackTargetId = best.unit.id;
+}
+
+/** 미니언 공격이 대상에게 주는 피해 (감소 전) */
+export function minionHitRaw(attacker, target) {
+  const kind = target.unitType ?? 'champion';
+  const ad = attacker.attackDamage;
+  if (kind === 'minion') return ad + target.hp * attacker.minionBonusDamage;
+  if (kind === 'turret') return ad * (attacker.minionType === 'cannon' ? MINION_COMBAT.cannonVsTurret : MINION_COMBAT.damageVsStructure);
+  return ad * MINION_COMBAT.damageVsChampion;
+}
+
+/** 미니언 공격 적중 (물리 피해) */
+export function dealMinionDamage(attacker, sourceId, target, ctx) {
+  const raw = minionHitRaw(attacker, target);
+  const amount = applyDamage(target, mitigate(raw, 'physical', target));
+  ctx.events.push({ type: 'damage', damageType: 'physical', targetId: target.id, sourceId, raw, amount, crit: false, minion: true });
+}
+
+function cancelMinionWindup(m) {
+  m.windupTimer = null;
+  m.windupTargetId = null;
+  m.attackTimer = 0;
+  m.attackTimerTotal = 0;
+}
+
+/**
+ * 미니언 한 틱: 대상 확인·선택, 추적, 선딜레이, 발사, 대상 없으면 라인 끝으로.
+ * @param {object} units  대상 후보 (챔피언·미니언·포탑)
+ * @param {object[]} recent  최근 피해 기록
+ * @returns {object|null} 새 투사체(아이디 없음)
+ */
+export function updateMinion(m, units, recent, map, dt, ctx) {
+  m.attackTimer = Math.max(0, m.attackTimer - dt);
+
+  // 대상을 잃음: 죽음·타겟 불가·너무 멀어짐
+  const cur = m.attackTargetId && units[m.attackTargetId];
+  if (m.attackTargetId && (!canAttack(m, cur) || reach(m, cur) > MINION_COMBAT.leashRange)) m.attackTargetId = null;
+  if (!m.attackTargetId) reevaluate(m, units, recent);
+
+  let shot = null;
+  // 선딜레이 진행 (대상이 사라지거나 멀어지면 취소)
+  if (m.windupTargetId !== null) {
+    const wt = units[m.windupTargetId];
+    if (!canAttack(m, wt) || edgeDistance(m, wt) > m.range + MINION_COMBAT.windupCancelLeeway) {
+      cancelMinionWindup(m);
+    }
+  }
+
+  const target = m.attackTargetId && units[m.attackTargetId];
+  if (m.windupTargetId === null && target) {
+    if (edgeDistance(m, target) > m.range) {
+      setMoveTarget(m, target.x, target.y, map); // 추적
+    } else {
+      m.target = null;
+      if (m.attackTimer <= EPSILON) {
+        m.windupTargetId = target.id;
+        m.windupTimer = m.windupTime;
+        m.attackTimer = m.attackTimerTotal = 1 / m.attackSpeed;
+      }
+    }
+  } else if (!target && m.windupTargetId === null) {
+    // 대상 없음: 라인 끝으로 (이미 도착했으면 그대로)
+    if (m.laneEnd && Math.hypot(m.laneEnd.x - m.x, m.laneEnd.y - m.y) > 1) setMoveTarget(m, m.laneEnd.x, m.laneEnd.y, map);
+    else m.target = null;
+  }
+
+  if (m.windupTargetId !== null) {
+    m.target = null;
+    m.windupTimer -= dt;
+    if (m.windupTimer <= EPSILON) {
+      const wt = units[m.windupTargetId];
+      if (m.projectileSpeed) {
+        shot = {
+          kind: 'minion',
+          ownerId: m.id,
+          team: m.team,
+          minionType: m.minionType,
+          targetId: wt.id,
+          x: m.x,
+          y: m.y,
+          speed: m.projectileSpeed,
+          radius: MINION_COMBAT.projectileRadius,
+          // 맞는 순간 계산에 쓰는 발사 시점 값
+          attackDamage: m.attackDamage,
+          minionBonusDamage: m.minionBonusDamage,
+        };
+      } else {
+        dealMinionDamage(m, m.id, wt, ctx);
+      }
+      m.windupTimer = null;
+      m.windupTargetId = null;
+      // 평타를 쏠 때마다 대상을 다시 고른다
+      reevaluate(m, units, recent);
+    }
+  }
+
+  m.attackState =
+    m.windupTargetId !== null ? 'windup' : target && edgeDistance(m, target) > m.range ? 'chase' : m.attackTimer > EPSILON ? 'cooldown' : 'idle';
+  return shot;
+}
+
+/**
+ * 미니언 투사체 이동과 적중. 대상이 사라지거나 타겟 불가가 되면 없어진다.
+ * @returns {boolean} 계속 유지할지
+ */
+export function updateMinionShot(proj, units, dt, ctx) {
+  const target = units[proj.targetId];
+  if (!target || target.hp <= 0 || target.targetable === false) return false;
+  const dx = target.x - proj.x;
+  const dy = target.y - proj.y;
+  const dist = Math.hypot(dx, dy);
+  const step = proj.speed * dt;
+  if (dist > step) {
+    proj.x += (dx / dist) * step;
+    proj.y += (dy / dist) * step;
+  } else {
+    proj.x = target.x;
+    proj.y = target.y;
+  }
+  if (Math.hypot(target.x - proj.x, target.y - proj.y) >= proj.radius + target.gameplayRadius) return true;
+  dealMinionDamage(proj, proj.ownerId, target, ctx);
+  return false;
+}
+
+/** 이번 틱 피해 이벤트를 최근 피해 기록에 더하고, 오래된 것은 지운다 */
+export function updateRecentHits(recent, events, time) {
+  const keep = recent.filter((h) => time - h.time < MINION_COMBAT.attackingMemory - EPSILON);
+  for (const ev of events) {
+    if (ev.type === 'damage' && ev.raw > 0 && ev.sourceId) keep.push({ sourceId: ev.sourceId, targetId: ev.targetId, time });
+  }
+  return keep;
 }

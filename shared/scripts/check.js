@@ -9,7 +9,7 @@ import { update } from '../update.js';
 import { TICK_DT } from '../constants.js';
 import { armorMultiplier, physicalDamage, mitigate, damageRaw } from '../damage.js';
 import { TURRET, turretAttackDamage, turretResist, updateTurret } from '../turret.js';
-import { MINIONS, MINION_WAVES, createWaveState, updateWaves, upgradeCount, minionStat, waveInterval } from '../minions.js';
+import { MINIONS, MINION_WAVES, MINION_COMBAT, createWaveState, updateWaves, upgradeCount, minionStat, waveInterval, createMinion } from '../minions.js';
 
 // 대부분의 검사는 같은 맵 코드를 '가로 통로'(각도 0)에서 돌린다: 좌표를 x 방향 거리로 쓰기 쉽게.
 // 실제 게임의 대각선 통로는 아래 '대각선 맵' 검사에서 따로 확인한다.
@@ -1315,6 +1315,7 @@ try {
       if (u < -1e-6 || u > TEST_MAP.lane.length + 1e-6 || Math.abs(v) > TEST_MAP.lane.width / 2 + 1e-6) throw new Error('미니언이 통로 밖으로 나갔습니다');
     }
     if (s.time > 31) s = { ...s, waves: { ...s.waves, enabled: false, queue: [] } }; // 첫 웨이브만
+    s = { ...s, minions: Object.fromEntries(Object.entries(s.minions).filter(([, m]) => m.team === 'blue')) }; // 싸우지 않게 파랑만
   }
   if (worst < obsMin - 1e-6) throw new Error(`미니언이 포탑 지형 안으로 들어갔습니다 (${worst.toFixed(1)})`);
   if (Object.values(s.minions).some((m) => Math.abs(worldToLane(TEST_MAP, m.x, m.y).v) > 1e-6)) throw new Error('포탑 지형이 미니언 통행로를 막아 미니언이 비켜 갔습니다');
@@ -1331,7 +1332,7 @@ try {
     const id = Object.keys(CHAMPIONS)[0];
     let q = createGameState({ minions: true });
     const c = laneToWorldTest(2000);
-    q = addPlayer(q, createPlayer({ id: 'a', name: 'A', team: 'red', x: c.x, y: c.y, championId: id }));
+    q = addPlayer(q, createPlayer({ id: 'a', name: 'A', team: 'blue', x: c.x, y: c.y, championId: id })); // 같은 팀 (공격하지 않게)
     let minGap = Infinity;
     for (let i = 0; i < 30 * 40; i++) {
       q = step(q);
@@ -1373,6 +1374,146 @@ try {
   console.log(`✓ 미니언 생성·이동 (웨이브 ${times.length}개/40분: 0:30 시작, 14:00→14:25, 29:50→30:10, 대포 3·2·1웨이브마다, 14분 근접 2·30분 원거리 2, 업그레이드 표, 0.5초 간격 한 마리씩, 라인 이동·끝에서 정지, 포탑 지형 충돌, 항상 유체화(챔피언·미니언 통과), 생성 끄기·시간 건너뛰기·지금 웨이브·제거)`);
 } catch (e) {
   fail(`미니언: ${e.message}`);
+}
+
+// 미니언 M2: 공격·피해 규칙, 대상 우선순위, 챔피언·스킬이 미니언을 공격, 죽음
+try {
+  const id = Object.keys(CHAMPIONS)[0];
+  const champ = CHAMPIONS[id];
+  const near = (a, b, eps = 1e-6) => Math.abs(a - b) <= eps;
+  // 미니언·챔피언을 통로 좌표(u, v)에 놓은 상태
+  const world = ({ minions = [], champs = [], turrets = false } = {}) => {
+    let q = createGameState({ turrets });
+    const ms = {};
+    for (const m of minions) {
+      const mm = createMinion({ id: m.id, team: m.team, type: m.type, upgrade: m.upgrade ?? 1, wave: 1, map: TEST_MAP });
+      const pos = laneToWorldTest(m.u, m.v ?? 0);
+      ms[m.id] = { ...mm, x: pos.x, y: pos.y, target: null, ...(m.patch ?? {}) };
+    }
+    q = { ...q, minions: ms };
+    for (const c of champs) {
+      const pos = laneToWorldTest(c.u, c.v ?? 0);
+      q = addPlayer(q, createPlayer({ id: c.id, name: c.id, team: c.team, x: pos.x, y: pos.y, championId: id, isDummy: c.dummy ?? false }));
+      if (c.patch) q = { ...q, players: { ...q.players, [c.id]: { ...q.players[c.id], ...c.patch } } };
+    }
+    return q;
+  };
+  const dmgEvents = (q, n, filter) => {
+    const out = [];
+    for (let i = 0; i < n; i++) {
+      q = step(q);
+      for (const ev of q.events) if (ev.type === 'damage' && filter(ev)) out.push({ ...ev, tick: q.tick });
+    }
+    return { q, out };
+  };
+
+  // 근접 vs 근접: 선딜레이 0.2초(6틱) 뒤 피해 = 공격력 + 대상 현재 체력 2%, 이후 1/1.25초마다
+  {
+    let q = world({ minions: [{ id: 'b1', team: 'blue', type: 'melee', u: 3000 }, { id: 'r1', team: 'red', type: 'melee', u: 3000 + 48 * 2 + 100 }] });
+    q = { ...q, minions: { ...q.minions, r1: { ...q.minions.r1, attackSpeed: 0.01 } } }; // r1은 거의 안 때림
+    const { out } = dmgEvents(q, 60, (ev) => ev.sourceId === 'b1');
+    if (!out.length) throw new Error('근접 미니언이 적 미니언을 때리지 않았습니다');
+    if (out[0].tick !== Math.ceil(MINIONS.melee.windup / TICK_DT - 1e-6)) throw new Error(`근접 첫 타 틱 ${out[0].tick} (예상 ${Math.ceil(MINIONS.melee.windup / TICK_DT - 1e-6)})`);
+    if (!near(out[0].raw, 11 + 465 * 0.02)) throw new Error(`근접 → 미니언 피해 ${out[0].raw} (예상 ${11 + 465 * 0.02})`);
+    if (!near(out[1].raw, 11 + (465 - out[0].amount) * 0.02)) throw new Error('두 번째 타의 추가 피해가 현재 체력 기준이 아닙니다');
+    const gap = out[1].tick - out[0].tick;
+    if (Math.abs(gap * TICK_DT - 1 / 1.25) > TICK_DT + 1e-6) throw new Error(`근접 공격 간격 ${gap}틱`);
+  }
+  // 원거리 → 챔피언: 투사체, 60% (방어력 적용) / 대포 → 포탑: 84% / 근접 → 포탑: 60%
+  {
+    let q = world({ minions: [{ id: 'b1', team: 'blue', type: 'caster', u: 3000 }], champs: [{ id: 'c', team: 'red', u: 3400, dummy: true }] });
+    let sawShot = false;
+    let hit = null;
+    for (let i = 0; i < 90 && !hit; i++) {
+      q = step(q);
+      if (q.projectiles.some((p) => p.kind === 'minion' && p.ownerId === 'b1')) sawShot = true;
+      hit = q.events.find((ev) => ev.type === 'damage' && ev.sourceId === 'b1');
+    }
+    if (!sawShot || !hit) throw new Error('원거리 미니언 투사체가 챔피언을 맞히지 않았습니다');
+    if (!near(hit.raw, 21 * 0.6) || !near(hit.amount, 21 * 0.6 * armorMultiplier(champ.armor))) throw new Error(`원거리 → 챔피언 피해 ${hit.raw}/${hit.amount}`);
+    const tr = createGameState({ turrets: true }).turrets['turret-red'];
+    const tu = worldToLane(TEST_MAP, tr.x, tr.y);
+    for (const [type, mult] of [['cannon', 0.84], ['melee', 0.6]]) {
+      let w = world({ minions: [{ id: 'b1', team: 'blue', type, u: tu.u - 250, v: tu.v }], turrets: true });
+      w = { ...w, turrets: { ...w.turrets, 'turret-red': { ...w.turrets['turret-red'], range: 0 } } }; // 포탑은 쏘지 않게
+      const { out } = dmgEvents(w, 90, (ev) => ev.sourceId === 'b1' && ev.targetId === 'turret-red');
+      const ad = minionStat(MINIONS[type].attackDamage, 1);
+      if (!out.length || !near(out[0].raw, ad * mult) || !near(out[0].amount, ad * mult * armorMultiplier(60))) throw new Error(`${type} → 포탑 피해 ${out[0]?.raw} (예상 ${ad * mult})`);
+    }
+  }
+  // 우선순위: 적 미니언(5)이 적 챔피언(6)보다 먼저
+  {
+    let q = world({ minions: [{ id: 'b1', team: 'blue', type: 'caster', u: 3000 }, { id: 'r1', team: 'red', type: 'melee', u: 3450, patch: { attackSpeed: 0.01 } }], champs: [{ id: 'c', team: 'red', u: 3200, dummy: true }] });
+    q = step(q);
+    if (q.minions.b1.attackTargetId !== 'r1') throw new Error(`가까운 챔피언보다 미니언을 먼저 노려야 합니다 (${q.minions.b1.attackTargetId})`);
+    // 아군 챔피언을 공격하는 적 챔피언(1): 1000 안이면 바꾼다 (다음 평타를 쏠 때)
+    q = world({
+      minions: [{ id: 'b1', team: 'blue', type: 'caster', u: 3000 }, { id: 'r1', team: 'red', type: 'melee', u: 3450, patch: { attackSpeed: 0.01, laneEnd: null } }],
+      champs: [{ id: 'enemy', team: 'red', u: 3000, v: 700 }, { id: 'ally', team: 'blue', u: 3000 + 500, v: 700, patch: { invulnerable: true } }],
+    });
+    // enemy는 b1에서 700 떨어져 있다 (탐색 500 밖, 1000 안)
+    q = step(q, [{ playerId: 'enemy', type: 'attack', targetId: 'ally' }]);
+    let switched = false;
+    for (let i = 0; i < 150 && !switched; i++) {
+      q = step(q);
+      switched = q.minions.b1.attackTargetId === 'enemy';
+    }
+    if (!switched) throw new Error('아군 챔피언을 공격하는 적 챔피언으로 대상을 바꾸지 않았습니다');
+    // 같은 순위로는 바꾸지 않는다: 미니언 r1을 노리는 중에 더 가까운 미니언 r2가 와도 그대로
+    q = world({ minions: [{ id: 'b1', team: 'blue', type: 'caster', u: 3000 }, { id: 'r1', team: 'red', type: 'melee', u: 3450, patch: { attackSpeed: 0.01 } }] });
+    q = run3(q, 3);
+    if (q.minions.b1.attackTargetId !== 'r1') throw new Error('같은 순위 검사 준비가 안 되었습니다');
+    const r2 = createMinion({ id: 'r2', team: 'red', type: 'melee', upgrade: 1, wave: 1, map: TEST_MAP });
+    const p2 = laneToWorldTest(3150);
+    q = { ...q, minions: { ...q.minions, r2: { ...r2, x: p2.x, y: p2.y, target: null, attackSpeed: 0.01, hp: 5000, maxHp: 5000 } } };
+    q = { ...q, minions: { ...q.minions, r1: { ...q.minions.r1, hp: 5000, maxHp: 5000 } } };
+    for (let i = 0; i < 90; i++) {
+      q = { ...q, minions: { ...q.minions, r1: { ...q.minions.r1, target: null }, r2: { ...q.minions.r2, target: null } } };
+      q = step(q);
+      if (q.minions.b1.attackTargetId !== 'r1') throw new Error('같은 순위의 더 가까운 대상으로 바꿨습니다');
+    }
+    // 대상이 leash(1000)보다 멀어지면 놓고 라인 끝으로 다시 걷는다
+    q = { ...q, minions: { b1: q.minions.b1, r1: { ...q.minions.r1, ...laneToWorldTest(3000 + MINION_COMBAT.leashRange + 200, 0) } } };
+    q = step(q);
+    if (q.minions.b1.attackTargetId) throw new Error('너무 멀어진 대상을 놓지 않았습니다');
+    if (!q.minions.b1.target) throw new Error('대상을 놓은 뒤 라인 끝으로 걷지 않습니다');
+  }
+  // 챔피언이 미니언을 공격 (우클릭), 스킬: Q는 첫 미니언에 막힘, W(챔피언만)는 통과. 죽으면 사라지고 막타 기록
+  {
+    let q = world({ minions: [{ id: 'r1', team: 'red', type: 'melee', u: 3300, patch: { laneEnd: null } }], champs: [{ id: 'a', team: 'blue', u: 3000, patch: { attackDamage: 1000 } }] });
+    q = { ...q, minions: { ...q.minions, r1: { ...q.minions.r1, attackSpeed: 0.01 } } };
+    q = step(q, [{ playerId: 'a', type: 'attack', targetId: 'r1' }]);
+    let death = null;
+    for (let i = 0; i < 90 && !death; i++) {
+      q = step(q);
+      death = q.events.find((ev) => ev.type === 'minionDeath');
+    }
+    if (!death || death.killerId !== 'a' || q.minions.r1) throw new Error('챔피언 평타로 미니언이 죽지 않았거나 막타 기록이 다릅니다');
+    q = step(q);
+    if (q.players.a.attackTargetId) throw new Error('죽은 미니언을 계속 공격합니다');
+    // Q: 미니언이 앞에 있으면 미니언이 맞고 뒤의 챔피언은 안 맞는다
+    q = world({ minions: [{ id: 'r1', team: 'red', type: 'melee', u: 3300, patch: { attackSpeed: 0.01, hp: 5000, maxHp: 5000 } }], champs: [{ id: 'a', team: 'blue', u: 3000 }, { id: 'e', team: 'red', u: 3600, dummy: true }] });
+    q = step(q, [{ playerId: 'a', type: 'cast', skill: 'Q', x: laneToWorldTest(4000).x, y: laneToWorldTest(4000).y }]);
+    const { q: q2, out } = dmgEvents(q, 60, (ev) => ev.sourceId === 'a');
+    if (!out.some((ev) => ev.targetId === 'r1' && ev.skill === 'Q') || out.some((ev) => ev.targetId === 'e')) throw new Error('Q가 앞의 미니언에 막히지 않았습니다');
+    // W: 챔피언만 맞는 투사체는 미니언을 통과
+    q = world({ minions: [{ id: 'r1', team: 'red', type: 'melee', u: 3300, patch: { attackSpeed: 0.01, hp: 5000, maxHp: 5000 } }], champs: [{ id: 'a', team: 'blue', u: 3000 }, { id: 'e', team: 'red', u: 3600, dummy: true }] });
+    q = step(q, [{ playerId: 'a', type: 'cast', skill: 'W', x: laneToWorldTest(4000).x, y: laneToWorldTest(4000).y }]);
+    const w = dmgEvents(q, 60, (ev) => ev.sourceId === 'a');
+    if (w.q.minions.r1.marks.length || !w.q.players.e.marks.length) throw new Error('W가 미니언을 통과해 챔피언에게 붙지 않았습니다');
+  }
+  // 대상이 죽으면 날아가던 미니언 투사체도 사라진다
+  {
+    let q = world({ minions: [{ id: 'b1', team: 'blue', type: 'caster', u: 3000 }, { id: 'r1', team: 'red', type: 'melee', u: 3540, patch: { attackSpeed: 0.01, laneEnd: null } }] });
+    for (let i = 0; i < 60 && !q.projectiles.some((p) => p.kind === 'minion'); i++) q = step(q);
+    if (!q.projectiles.some((p) => p.kind === 'minion')) throw new Error('투사체 검사 준비가 안 되었습니다');
+    q = step({ ...q, minions: { ...q.minions, r1: { ...q.minions.r1, hp: 0 } } });
+    if (q.projectiles.some((p) => p.kind === 'minion') || q.minions.r1) throw new Error('죽은 미니언을 향한 투사체가 남았습니다');
+  }
+
+  console.log(`✓ 미니언 전투 (근접 즉시·원거리/대포 투사체, 선딜레이 ${MINIONS.melee.windup}/${MINIONS.caster.windup}초, 챔피언 60%·포탑 60%·대포→포탑 84%, 미니언끼리 현재 체력 % 추가, 우선순위 미니언>챔피언·아군 챔피언 공격자 1000까지·같은 순위 유지·leash, 챔피언 평타·Q 막힘·W 통과, 죽음·막타·투사체 소멸)`);
+} catch (e) {
+  fail(`미니언 전투: ${e.message}`);
 }
 
 if (failed) {

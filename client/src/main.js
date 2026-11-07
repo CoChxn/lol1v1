@@ -64,8 +64,8 @@ function pickEnemy(wx, wy) {
   const me = state.players[MY_ID];
   let best = null;
   let bestDist = Infinity;
-  // 챔피언과 포탑 모두 우클릭으로 평타 대상이 된다
-  const units = [...Object.values(state.players), ...Object.values(state.turrets ?? {})];
+  // 챔피언·포탑·미니언 모두 우클릭으로 평타 대상이 된다
+  const units = [...Object.values(state.players), ...Object.values(state.turrets ?? {}), ...Object.values(state.minions ?? {})];
   for (const p of units) {
     const id = p.id;
     if (p.team === me.team || p.hp <= 0 || p.targetable === false) continue;
@@ -122,8 +122,12 @@ startLoop({
     state = update(state, pendingInputs, dt);
     pendingInputs = [];
     // 이번 틱 이벤트 → 화면 효과
+    const unit = (id) => state.players[id] ?? state.turrets?.[id] ?? state.minions?.[id] ?? prevState.minions?.[id];
+    const isChampion = (id) => !!state.players[id];
     for (const ev of state.events) {
-      const target = state.players[ev.targetId] ?? state.turrets?.[ev.targetId];
+      const target = unit(ev.targetId);
+      // 챔피언이 끼지 않은 피해(미니언끼리, 포탑 ↔ 미니언)는 숫자를 띄우지 않는다 (너무 많아서)
+      if (ev.type === 'damage' && !isChampion(ev.targetId) && !isChampion(ev.sourceId)) continue;
       if (ev.type === 'damage' && target) {
         renderer.damageNumbers.add(ev, { x: target.x, y: target.y - target.gameplayRadius - 40 });
       }

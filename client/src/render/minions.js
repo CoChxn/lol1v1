@@ -43,7 +43,7 @@ export function drawMinions(ctx, prevState, state, alpha, upright = NO_ROTATION)
   }
 }
 
-/** [개발자 모드] 미니언 판정·이동 충돌 반경, 이동 목표 */
+/** [개발자 모드] 미니언 판정·이동 충돌 반경, 공격 대상 선 */
 export function drawMinionDebug(ctx, prevState, state, alpha) {
   const prev = prevState.minions ?? {};
   for (const m of Object.values(state.minions ?? {})) {
@@ -59,5 +59,14 @@ export function drawMinionDebug(ctx, prevState, state, alpha) {
     ctx.arc(x, y, m.pathingRadius, 0, Math.PI * 2);
     ctx.stroke();
     ctx.setLineDash([]);
+    const t = m.attackTargetId && (state.players[m.attackTargetId] ?? state.minions[m.attackTargetId] ?? state.turrets?.[m.attackTargetId]);
+    if (t) {
+      ctx.strokeStyle = m.team === 'blue' ? 'rgba(120, 180, 255, 0.45)' : 'rgba(255, 130, 130, 0.45)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(t.x, t.y);
+      ctx.stroke();
+    }
   }
 }
