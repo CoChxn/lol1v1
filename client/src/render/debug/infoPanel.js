@@ -24,7 +24,7 @@ function unitLines(label, p) {
     `  move speed ${p.moveSpeed.toFixed(1)} (base ${p.baseMoveSpeed})`,
     `  attack speed ${p.attackSpeed.toFixed(3)} (base ${p.baseAttackSpeed.toFixed(3)})  T ${(1 / p.attackSpeed).toFixed(3)}s  W ${computeWindup(atk, p.attackSpeed, p.baseAttackSpeed).toFixed(3)}s`,
     `  attack [${p.attackState}]${p.attackMoveTarget ? ' attack-move' : ''}  AD ${p.attackDamage}  range ${atk.range} (+${WINDUP_CANCEL_LEEWAY})`,
-    `  skills ${Object.entries(p.skills).map(([k, st]) => `${k} Lv${st.level} cd ${st.cooldown.toFixed(2)}`).join('  ') || '-'}${p.casting ? `  [시전 중 ${p.casting.skill} ${p.casting.remaining.toFixed(2)}s]` : ''}  AP ${p.abilityPower}  bonus AD ${p.attackDamage - p.baseAttackDamage}${p.marks.length ? `  [표식 ${p.marks.map((m) => `${m.skill} ${m.remaining.toFixed(1)}s`).join(', ')}]` : ''}`,
+    `  skills ${Object.entries(p.skills).map(([k, st]) => `${k} Lv${st.level} cd ${st.cooldown.toFixed(2)}`).join('  ') || '-'}${p.casting ? `  [시전 중 ${p.casting.skill} ${p.casting.remaining.toFixed(2)}s]` : ''}  ${Object.entries(p.summoners ?? {}).map(([k, st]) => `${k} cd ${st.cooldown.toFixed(1)}`).join(' ')}  AP ${p.abilityPower}  bonus AD ${p.attackDamage - p.baseAttackDamage}${p.marks.length ? `  [표식 ${p.marks.map((m) => `${m.skill} ${m.remaining.toFixed(1)}s`).join(', ')}]` : ''}`,
     `  선입력 ${formatQueued(p)}  |  패시브 ${p.passive?.stacks ?? 0}중첩${p.passive?.stacks ? ` (${p.passive.remaining.toFixed(1)}초)` : ''}`,
     `  effects ${effects}${p.invulnerable ? '  [무적]' : ''}${p.infiniteMana ? '  [무한 마나]' : ''}${p.noCooldown ? '  [쿨타임 없음]' : ''}${p.isDummy ? `  [행동: ${p.dummyMode}]` : ''}`,
   ];
@@ -42,7 +42,7 @@ export function drawInfoPanel(ctx, state, myId, { fps, combatLog }) {
   y += panel(ctx, 10, y, [
     '[키] 1: 내 체력-100  2: 내 마나-50  3: 모두 회복  4: 둔화 40% 3초',
     '     5: 이속 +50% 3초  6: 공속 +100% 3초  7: 치명타 100% 3초  8: 허수아비 방어력  9: 쿨타임 없음',
-    '     Q: 스킬 조준(떼면 시전)  A+좌클릭: 어택땅  S: 정지  P: 일시정지  N: 한 틱  M: 속도  F2: 개발자 모드 끄기',
+    '     Q: 스킬 조준(떼면 시전)  F: 점멸  A+좌클릭: 어택땅  S: 정지  P: 일시정지  N: 한 틱  M: 속도  F2: 개발자 모드 끄기',
   ], '#cde') + 8;
 
   const log = combatLog.entries();

@@ -8,6 +8,7 @@ import { drawRangeRing } from './rangeRing.js';
 import { createDamageNumbers } from './damageNumbers.js';
 import { drawSkillIndicator } from './skillIndicator.js';
 import { drawSkillBar } from './skillBar.js';
+import { createFlashEffects } from './flashEffect.js';
 import { drawDebugOverlays, drawOverlayLegend } from './debug/overlays.js';
 import { drawInfoPanel, drawModeBadge, drawTimeBanner } from './debug/infoPanel.js';
 import { createCombatLog } from './debug/combatLog.js';
@@ -18,6 +19,7 @@ export function createRenderer(canvas) {
   const camera = createCamera(WALL_THICKNESS + 40);
   const clickMarker = createClickMarker();
   const damageNumbers = createDamageNumbers();
+  const flashEffects = createFlashEffects();
   const combatLog = createCombatLog();
 
   // FPS 측정용
@@ -79,6 +81,7 @@ export function createRenderer(canvas) {
     drawPlayers(ctx, prevState, state, alpha, myId, upright);
     if (ui.devMode) drawDebugOverlays(ctx, prevState, state, alpha, upright);
     drawProjectiles(ctx, prevState, state, alpha);
+    flashEffects.draw(ctx);
     damageNumbers.draw(ctx, upright);
 
     // 화면 고정 UI
@@ -93,5 +96,5 @@ export function createRenderer(canvas) {
     drawModeBadge(ctx, canvas.width, ui.devMode);
   }
 
-  return { render, camera, clickMarker, damageNumbers, combatLog };
+  return { render, camera, clickMarker, damageNumbers, combatLog, flashEffects };
 }

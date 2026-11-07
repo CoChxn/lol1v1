@@ -3,6 +3,7 @@ import { CHAMPIONS } from '../champions/index.js';
 import { validateChampion } from '../champions/validate.js';
 import { createGameState as createRealGameState, addPlayer } from '../state.js';
 import { createLaneMap, clampToMap, worldToLane, laneDirection } from '../map.js';
+import { SUMMONER_SPELLS } from '../summoners.js';
 import { createPlayer } from '../player.js';
 import { update } from '../update.js';
 import { TICK_DT } from '../constants.js';
@@ -769,6 +770,74 @@ if (!failed) {
   } finally {
     delete CHAMPIONS.__melee;
   }
+}
+
+// 소환사 주문: 점멸
+try {
+  const id = Object.keys(CHAMPIONS)[0];
+  const skills = CHAMPIONS[id].skills ?? {};
+  const fl = SUMMONER_SPELLS.flash;
+  const range = fl.targeting.range;
+  const blue = TEST_MAP.spawns.blue;
+  const flashAt = (x, y) => ({ playerId: 'a', type: 'summoner', slot: 'F', x, y });
+  const patch = (s, pid, p) => ({ ...s, players: { ...s.players, [pid]: { ...s.players[pid], ...p } } });
+  const base = () => {
+    let s = duel(id, 3000);
+    return patch(s, 'a', { x: blue.x + 1000 });
+  };
+  const ax = blue.x + 1000;
+  // 사거리 안 → 커서 지점, 밖 → 커서 방향으로 사거리만큼, 쿨타임 시작, 쿨타임 중엔 안 됨
+  let s = step(base(), [flashAt(ax + 250, blue.y)]);
+  if (Math.abs(s.players.a.x - (ax + 250)) > 1e-6) throw new Error('사거리 안 커서 지점으로 점멸하지 않았습니다');
+  if (!(s.players.a.summoners.F.cooldown > fl.cooldown - 0.1)) throw new Error('점멸 쿨타임이 시작되지 않았습니다');
+  const x1 = s.players.a.x;
+  s = step(s, [flashAt(x1 + 300, blue.y)]);
+  if (s.players.a.x !== x1) throw new Error('쿨타임 중에 점멸이 되었습니다');
+  s = step(base(), [flashAt(ax + 2000, blue.y)]);
+  if (Math.abs(s.players.a.x - (ax + range)) > 1e-6) throw new Error(`사거리 밖 커서인데 ${(s.players.a.x - ax).toFixed(1)}만큼 이동했습니다 (예상 ${range})`);
+  // 벽 쪽 → 통로 안
+  s = step(patch(base(), 'a', { x: 100 }), [flashAt(-500, blue.y)]);
+  if (s.players.a.x !== s.players.a.pathingRadius) throw new Error('벽 밖으로 점멸했습니다');
+  // 이동 명령: 같은 방향이면 유지, 반대 방향이면 멈춤
+  s = step(base(), [{ playerId: 'a', type: 'move', x: ax + 2000, y: blue.y }]);
+  s = step(s, [flashAt(ax + 1000, blue.y + 200)]);
+  if (!s.players.a.target) throw new Error('이동 방향과 비슷한 쪽으로 점멸했는데 이동이 멈췄습니다');
+  s = step(base(), [{ playerId: 'a', type: 'move', x: ax + 2000, y: blue.y }]);
+  s = step(s, [flashAt(ax - 1000, blue.y)]);
+  if (s.players.a.target) throw new Error('이동 반대 방향으로 점멸했는데 계속 이동합니다');
+  // 평타 명령 유지 + 선딜레이 중 점멸: 사거리 밖이 되어도 그 평타는 나간다
+  s = duel(id, 400);
+  s = step(s, [attackB]);
+  if (s.players.a.attackWindup === null) throw new Error('선딜레이가 시작되지 않았습니다');
+  s = step(s, [flashAt(blue.x - 2000, blue.y)]); // 뒤로 점멸 → 사거리 + 여유 밖
+  if (s.players.a.attackWindup === null && !s.projectiles.some((p) => p.kind === 'attack')) throw new Error('선딜레이 중 점멸했더니 평타가 취소되었습니다');
+  let fired = false;
+  for (let i = 0; i < 30 && !fired; i++) {
+    s = step(s);
+    fired = s.projectiles.some((p) => p.kind === 'attack');
+  }
+  if (!fired) throw new Error('선딜레이 중 점멸한 뒤 평타가 나가지 않았습니다');
+  if (s.players.a.attackTargetId !== 'b') throw new Error('점멸 뒤 평타 명령이 사라졌습니다');
+  // 스킬 시전 중 점멸: 시전은 끊기지 않음. 시작 위치 발사 스킬은 처음 위치에서, 나머지는 점멸한 자리에서
+  for (const key in skills) {
+    const proj = skills[key].effects.find((e) => e.type === 'projectile');
+    if (!proj || !(skills[key].activation.castTime > 0)) continue;
+    s = step(duel(id, 3000), [{ playerId: 'a', type: 'cast', skill: key, x: blue.x + 3000, y: blue.y }]);
+    s = step(s, [flashAt(blue.x, blue.y + 300)]);
+    if (!s.players.a.casting) throw new Error(`${key} 시전 중 점멸했더니 시전이 끊겼습니다`);
+    while (s.players.a.casting) s = step(s);
+    const p0 = s.projectiles.find((p) => p.skill === key);
+    const startY = p0.y - p0.dirY * p0.speed * TICK_DT;
+    const expectY = proj.origin === 'castStart' ? blue.y : s.players.a.y;
+    if (Math.abs(startY - expectY) > 1e-6) throw new Error(`${key} 발사 위치가 다릅니다 (${startY.toFixed(1)}, 예상 ${expectY.toFixed(1)})`);
+  }
+  // 쿨타임 없음 치트는 점멸에도 적용
+  s = step(base(), [flashAt(ax + 100, blue.y)]);
+  s = step(s, [{ playerId: 'a', type: 'debug', action: 'toggleNoCooldown' }]);
+  if (s.players.a.summoners.F.cooldown !== 0) throw new Error('쿨타임 없음 치트가 점멸 쿨타임을 지우지 않았습니다');
+  console.log(`✓ 점멸 (사거리 ${range}, 쿨타임 ${fl.cooldown}초, 벽, 이동 명령 각도 유지/멈춤, 선딜레이 유지, 스킬 시전 중 사용, 쿨타임 없음 치트)`);
+} catch (e) {
+  fail(`점멸: ${e.message}`);
 }
 
 // 대각선 맵 (실제 게임 맵): 통로 안 시작 지점, 벽 충돌·미끄러짐, 순간이동·어택땅 벽 처리, 라인을 따라 평타

@@ -66,7 +66,7 @@ export function applyDebugInput(players, player, input, map) {
     if (DEBUG_FLAGS.includes(input.flag)) {
       target[input.flag] = !!input.value;
       if (input.flag === 'infiniteMana' && input.value) target.mana = target.maxMana;
-      if (input.flag === 'noCooldown' && input.value) for (const k in target.skills) target.skills[k].cooldown = 0;
+      if (input.flag === 'noCooldown' && input.value) resetAllCooldowns(target);
     }
   } else if (action === 'setDummyMode') {
     if (target.isDummy && DUMMY_MODES.includes(input.mode)) {
@@ -100,6 +100,12 @@ export function applyDebugInput(players, player, input, map) {
   else if (action === 'crit') addEffect(target, { kind: 'critChance', value: 1, duration: 3 });
   else if (action === 'toggleNoCooldown') {
     target.noCooldown = !target.noCooldown;
-    if (target.noCooldown) for (const k in target.skills) target.skills[k].cooldown = 0;
+    if (target.noCooldown) resetAllCooldowns(target);
   }
+}
+
+/** 스킬·소환사 주문 쿨타임 모두 0 */
+function resetAllCooldowns(player) {
+  for (const k in player.skills) player.skills[k].cooldown = 0;
+  for (const k in player.summoners ?? {}) player.summoners[k].cooldown = 0;
 }

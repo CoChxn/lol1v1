@@ -9,6 +9,7 @@
 //     quick          키를 누르는 순간 커서 방향으로 시전 (범위 표시 없음)
 //     quickIndicator 누르는 동안 범위 표시 → 키를 떼면(또는 좌클릭하면) 시전
 //   조준 취소: 우클릭, Esc, A, S
+// - F: 점멸 (소환사 주문). 누르는 순간 커서 위치로 (입력 방식 설정과 상관없이)
 
 /**
  * @param {HTMLCanvasElement} canvas
@@ -148,7 +149,13 @@ export function setupInput(
     const tag = e.target?.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
     const key = e.key.toLowerCase();
-    if (SKILL_KEYS.includes(key)) {
+    if (key === 'f') {
+      // 점멸: 즉시 커서 위치로. 스킬 조준 중이어도 조준은 그대로 둔다
+      if (lastMouse) {
+        const { x, y } = screenToWorld(lastMouse.x, lastMouse.y);
+        onInput({ type: 'summoner', slot: 'F', x, y });
+      }
+    } else if (SKILL_KEYS.includes(key)) {
       pressSkill(key.toUpperCase());
     } else if (key === 'a') {
       cancelAim(); // 공격 명령: 스킬 조준 취소

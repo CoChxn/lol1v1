@@ -1,6 +1,7 @@
 // 플레이어 데이터 생성. 능력치는 챔피언 데이터에서 가져온다.
 import { getChampion, DEFAULT_CHAMPION } from './champions/index.js';
 import { createSkillStates } from './skills.js';
+import { createSummonerStates } from './summoners.js';
 
 /**
  * @param {object} opts
@@ -54,6 +55,7 @@ export function createPlayer({ id, name, team, x, y, championId = DEFAULT_CHAMPI
     attackTimerTotal: 0, // 이번 공격 타이머 전체 길이 T (표시용)
     attackWindup: null, // 선딜레이 남은 시간(초). null이면 선딜레이 중 아님
     attackWindupTotal: 0, // 이번 선딜레이 전체 길이 W (표시용)
+    attackWindupKeepRange: false, // true면 이번 선딜레이는 대상이 멀어져도 취소되지 않음 (선딜레이 중 점멸)
     commandLockTicks: 0, // 남은 명령 잠금 틱 수. 0보다 크면 새 명령을 선입력으로 저장한다 (발사 직후 1틱)
     queuedCommand: null, // 행동 불가 중 선입력 슬롯 (commands.js). 명령 하나, 마지막 입력이 이긴다
     queuedCasts: {}, // 쿨타임 선입력 (commands.js). 스킬별 { Q: { x, y } }, 이동·평타로는 지워지지 않음
@@ -61,6 +63,7 @@ export function createPlayer({ id, name, team, x, y, championId = DEFAULT_CHAMPI
     invulnerable: false, // true면 피해를 받지 않는다 (무적)
     noCooldown: false, // [개발자 모드] true면 스킬 쿨타임이 돌지 않는다
     skills: createSkillStates(champ), // 스킬 상태 { Q: { level, cooldown } }
+    summoners: createSummonerStates(), // 소환사 주문 { F: { spell: 'flash', cooldown } } (summoners.js)
     casting: null, // 시전 중인 스킬 { skill, dirX, dirY, remaining }
     unitType: 'champion', // 유닛 종류 (나중에 'minion', 'monster' 등)
     marks: [], // 이 캐릭터에 붙은 표식 [{ ownerId, skill, remaining }] (marks.js)

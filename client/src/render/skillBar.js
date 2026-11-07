@@ -1,5 +1,5 @@
 // 화면 아래 스킬 칸: 키, 이름, 레벨, 마나, 쿨타임 숫자.
-import { SKILL_KEYS, getSkillData, levelValue, castBlockReason, getPassiveData } from '@lol1v1/shared';
+import { SKILL_KEYS, getSkillData, levelValue, castBlockReason, getPassiveData, getSummonerData } from '@lol1v1/shared';
 
 const SIZE = 64;
 const GAP = 10;
@@ -7,9 +7,10 @@ const GAP = 10;
 export function drawSkillBar(ctx, width, height, player) {
   const keys = SKILL_KEYS.filter((k) => player.skills[k]);
   const passive = getPassiveData(player);
-  const slots = keys.length + (passive ? 1 : 0);
+  const summonerSlots = Object.keys(player.summoners ?? {});
+  const slots = keys.length + (passive ? 1 : 0) + summonerSlots.length;
   if (!slots) return;
-  const total = slots * SIZE + (slots - 1) * GAP;
+  const total = slots * SIZE + (slots - 1) * GAP + (summonerSlots.length ? GAP * 2 : 0);
   let x = Math.round(width / 2 - total / 2);
   const y = height - SIZE - 28;
 
@@ -78,6 +79,13 @@ export function drawSkillBar(ctx, width, height, player) {
     ctx.textBaseline = 'alphabetic';
     x += SIZE + GAP;
   }
+
+  // 소환사 주문 칸 (스킬 칸과 조금 떨어뜨림)
+  x += GAP * 2;
+  for (const slot of summonerSlots) {
+    drawSummonerSlot(ctx, x, y, slot, player.summoners[slot]);
+    x += SIZE + GAP;
+  }
 }
 
 /** 패시브 칸: 중첩 수(가운데), 남은 시간 막대(아래), 이름 */
@@ -110,5 +118,37 @@ function drawPassiveSlot(ctx, x, y, player, data) {
   ctx.textBaseline = 'alphabetic';
   ctx.fillStyle = '#ccd';
   ctx.fillText(data.name, x + SIZE / 2, y + SIZE + 15);
+  ctx.textAlign = 'start';
+}
+
+/** 소환사 주문 칸: 키, 이름, 쿨타임 숫자 */
+function drawSummonerSlot(ctx, x, y, slot, st) {
+  const data = getSummonerData(st.spell);
+  const ready = st.cooldown <= 0;
+  ctx.fillStyle = 'rgba(15, 20, 30, 0.9)';
+  ctx.fillRect(x, y, SIZE, SIZE);
+  ctx.fillStyle = 'rgba(200, 170, 60, 0.85)';
+  ctx.fillRect(x + 3, y + 3, SIZE - 6, SIZE - 6);
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  if (!ready) {
+    const ratio = Math.min(st.cooldown / data.cooldown, 1);
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    ctx.fillRect(x + 3, y + 3 + (SIZE - 6) * (1 - ratio), SIZE - 6, (SIZE - 6) * ratio);
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 18px sans-serif';
+    ctx.fillText(st.cooldown < 1 ? st.cooldown.toFixed(1) : String(Math.ceil(st.cooldown)), x + SIZE / 2, y + SIZE / 2);
+  } else {
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 22px sans-serif';
+    ctx.fillText(slot, x + SIZE / 2, y + SIZE / 2 - 4);
+  }
+  ctx.strokeStyle = ready ? '#fe8' : '#665';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(x, y, SIZE, SIZE);
+  ctx.font = '11px sans-serif';
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillStyle = '#ccd';
+  ctx.fillText(`${slot} ${data.name}`, x + SIZE / 2, y + SIZE + 15);
   ctx.textAlign = 'start';
 }

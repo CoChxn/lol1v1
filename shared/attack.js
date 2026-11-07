@@ -188,6 +188,7 @@ export function cancelWindup(player, force = false) {
   if (!force && player.attackWindup <= TICK_DT + EPSILON) return;
   player.attackWindup = null;
   player.attackWindupTargetId = null;
+  player.attackWindupKeepRange = false;
   resetAttackTimer(player);
 }
 
@@ -254,7 +255,7 @@ export function updateAttack(player, players, map, dt, ctx) {
     if (!canAttack(player, target)) {
       // 대상 사망·타겟 불가: 평타 끊김
       cancelWindup(player, true);
-    } else if (edgeDistance(player, target) > atk.range + WINDUP_CANCEL_LEEWAY) {
+    } else if (!player.attackWindupKeepRange && edgeDistance(player, target) > atk.range + WINDUP_CANCEL_LEEWAY) {
       // 대상이 너무 멀어짐: 평타 끊김 (명령이 남아 있으면 다음 틱부터 다시 추적)
       cancelWindup(player, true);
     } else {
@@ -264,6 +265,7 @@ export function updateAttack(player, players, map, dt, ctx) {
         // 발사: 이제부터 쿨다운 구간
         player.attackWindup = null;
         player.attackWindupTargetId = null;
+        player.attackWindupKeepRange = false;
         player.commandLockTicks = 1;
         // 피해량(공격력 100%)과 치명타 여부는 발사 순간 정한다. 방어력은 맞는 순간의 값으로 계산한다.
         const hit = { raw: player.attackDamage, crit: rollCrit(player, ctx.rng), critDamage: player.critDamage };

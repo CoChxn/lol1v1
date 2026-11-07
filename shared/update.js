@@ -6,6 +6,7 @@ import { tickSkillCooldowns, updateCasting, updateSkillshot, updateHomingSkill }
 import { tickMarks } from './marks.js';
 import { tickPassive } from './passive.js';
 import { submitCommand, runQueuedCommands } from './commands.js';
+import { tickSummonerCooldowns } from './summoners.js';
 import { updateAttack, updateAttackMove, updateProjectile, computeAttackSpeed } from './attack.js';
 
 /**
@@ -16,6 +17,7 @@ import { updateAttack, updateAttackMove, updateProjectile, computeAttackSpeed } 
  *   - { playerId, type: 'attackMove', x, y }  어택땅
  *   - { playerId, type: 'stop' }  정지
  *   - { playerId, type: 'cast', skill: 'Q', x, y }  스킬 시전 (x, y: 방향을 정하는 지점)
+ *   - { playerId, type: 'summoner', slot: 'F', x, y }  소환사 주문 (점멸 등)
  * @param {number} dt  흐른 시간(초)
  * @returns {object} 다음 게임 상태
  */
@@ -27,7 +29,9 @@ export function update(state, inputs, dt) {
     // 안쪽 객체(스킬 상태, 시전 정보)도 복사해서 원본을 바꾸지 않는다
     const skills = {};
     for (const key in p.skills) skills[key] = { ...p.skills[key] };
-    players[id] = { ...p, skills, casting: p.casting && { ...p.casting }, marks: p.marks.map((m) => ({ ...m })), passive: { ...p.passive } };
+    const summoners = {};
+    for (const slot in p.summoners) summoners[slot] = { ...p.summoners[slot] };
+    players[id] = { ...p, skills, summoners, casting: p.casting && { ...p.casting }, marks: p.marks.map((m) => ({ ...m })), passive: { ...p.passive } };
   }
   let projectiles = state.projectiles.map((p) => ({ ...p }));
   let nextId = state.nextId;
@@ -40,6 +44,7 @@ export function update(state, inputs, dt) {
   for (const id in players) {
     tickEffects(players[id], dt);
     tickSkillCooldowns(players[id], dt);
+    tickSummonerCooldowns(players[id], dt);
     tickMarks(players[id], dt);
     tickPassive(players[id], dt);
     if (players[id].revealed > 0) players[id].revealed = Math.max(0, players[id].revealed - dt);
@@ -51,7 +56,7 @@ export function update(state, inputs, dt) {
   }
   for (const input of allInputs) {
     const player = players[input.playerId];
-    if (player) submitCommand(players, player, input, state.map);
+    if (player) submitCommand(players, player, input, state.map, ctx);
   }
 
   for (const id in players) {

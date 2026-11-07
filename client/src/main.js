@@ -128,6 +128,7 @@ startLoop({
       if (ev.type === 'manaRestore' && target && ev.amount > 0) {
         renderer.damageNumbers.add(ev, { x: target.x, y: target.y - target.gameplayRadius - 40 });
       }
+      if (ev.type === 'flash') renderer.flashEffects.add(ev);
       renderer.combatLog.add(ev, state);
     }
   },

@@ -12,6 +12,7 @@
 //    - 취소: 스킬이 실제로 시전될 때(다른 쿨타임 선입력 모두 취소), 정지(S)
 //    - 쿨타임이 끝나는 틱에 시전 (행동 불가 중이면 그것이 끝난 뒤). 둘 이상이면 먼저 준비된 것부터
 // 정지(stop)와 테스트 입력(debug)은 저장하지 않고 항상 바로 처리한다. 정지는 ①② 모두 지운다.
+// 소환사 주문(summoner, 예: 점멸)도 저장하지 않고 항상 바로 처리한다 (summoners.js).
 // 실행하는 순간 마나가 부족하면 시전 조건에서 막혀 아무 일도 일어나지 않는다 (버린 것과 같음).
 //
 // player는 update에서 복사한 객체라 직접 바꿔도 된다.
@@ -19,6 +20,7 @@ import { setMoveTarget } from './movement.js';
 import { orderAttack, orderAttackMove, orderStop, cancelAttack } from './attack.js';
 import { orderCast, getSkillData, SKILL_KEYS } from './skills.js';
 import { applyDebugInput } from './debug.js';
+import { orderSummoner } from './summoners.js';
 
 const EPSILON = 1e-6;
 
@@ -60,7 +62,12 @@ function handle(players, player, cmd, map) {
 }
 
 /** 새로 들어온 명령 처리 */
-export function submitCommand(players, player, cmd, map) {
+export function submitCommand(players, player, cmd, map, ctx) {
+  if (cmd.type === 'summoner') {
+    // 소환사 주문(점멸 등)은 시전 시간이 없어 행동 불가 중에도 바로 쓴다 (진행 중인 스킬 시전은 끊지 않음)
+    orderSummoner(player, players, cmd.slot, cmd.x, cmd.y, map, ctx);
+    return;
+  }
   if (cmd.type === 'debug') {
     applyDebugInput(players, player, cmd, map);
     return;
