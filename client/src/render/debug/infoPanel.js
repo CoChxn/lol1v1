@@ -1,5 +1,5 @@
 // [개발자 모드] 화면 고정 정보 패널: 상태 수치, 키 안내, 전투 기록.
-import { getChampion, computeWindup, computeCritChance, WINDUP_CANCEL_LEEWAY } from '@lol1v1/shared';
+import { getChampion, computeWindup, computeCritChance, WINDUP_CANCEL_LEEWAY, upgradeCount } from '@lol1v1/shared';
 
 const LINE = 17;
 const PAD = 10;
@@ -32,7 +32,13 @@ function unitLines(label, p) {
 
 export function drawInfoPanel(ctx, state, myId, { fps, combatLog }) {
   let y = 10;
-  const header = [`tick ${state.tick}  time ${state.time.toFixed(1)}s  fps ${fps}`];
+  const clock = (t) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
+  const w = state.waves;
+  const minionCount = Object.keys(state.minions ?? {}).length;
+  const header = [
+    `tick ${state.tick}  time ${state.time.toFixed(1)}s (${clock(state.time)})  fps ${fps}`,
+    w ? `미니언 ${minionCount}마리  웨이브 ${w.waveCount}회  다음 ${clock(w.nextWaveTime)}  업그레이드 ${upgradeCount(state.time)}회  생성 ${w.enabled ? '켜짐' : '꺼짐'}` : '',
+  ].filter(Boolean);
   const me = state.players[myId];
   if (me) header.push(...unitLines('나', me));
   const dummy = state.players.dummy;

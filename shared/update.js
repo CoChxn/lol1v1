@@ -9,6 +9,12 @@ import { submitCommand, runQueuedCommands } from './commands.js';
 import { tickSummonerCooldowns } from './summoners.js';
 import { updateAttack, updateAttackMove, updateProjectile, computeAttackSpeed } from './attack.js';
 import { tickTurret, updateTurret, updateTurretShot, checkTurretDestroyed } from './turret.js';
+import { updateWaves, createMinion, queueWave, waveStateAt } from './minions.js';
+
+// 게임 전체에 적용되는 개발자 입력: { type: 'debug', action, value? }
+//   skipTime: value초만큼 게임 시간 건너뛰기 / setMinionSpawning: 웨이브 생성 켜기·끄기
+//   spawnWave: 지금 웨이브 하나 생성 (cannon: 대포 포함) / clearMinions: 미니언 모두 제거
+export const WORLD_DEBUG = ['skipTime', 'setMinionSpawning', 'spawnWave', 'clearMinions'];
 
 /**
  * @param {object} state  현재 게임 상태
@@ -34,6 +40,29 @@ export function update(state, inputs, dt) {
     for (const slot in p.summoners) summoners[slot] = { ...p.summoners[slot] };
     players[id] = { ...p, skills, summoners, casting: p.casting && { ...p.casting }, marks: p.marks.map((m) => ({ ...m })), passive: { ...p.passive } };
   }
+  // 게임 전체에 적용되는 개발자 입력 (시간 건너뛰기, 미니언 생성 켜기/끄기 등)
+  let time = state.time;
+  let waves = { ...state.waves ?? { enabled: false, nextWaveTime: Infinity, waveCount: 0, sinceCannon: 0, queue: [] } };
+  let minionsIn = state.minions ?? {};
+  const worldInputs = inputs.filter((i) => i.type === 'debug' && WORLD_DEBUG.includes(i.action));
+  for (const i of worldInputs) {
+    if (i.action === 'skipTime' && i.value > 0) {
+      time += i.value;
+      waves = { ...waveStateAt(time, waves.enabled), queue: [] };
+    } else if (i.action === 'setMinionSpawning') {
+      // 다시 켤 때 그동안의 일정을 지금 시각에 맞춘다 (이미 대기 중인 미니언은 그대로)
+      waves = { ...waveStateAt(time, !!i.value), queue: waves.queue };
+    } else if (i.action === 'spawnWave') {
+      queueWave(waves, time, !!i.cannon, waves.waveCount);
+    } else if (i.action === 'clearMinions') {
+      minionsIn = {};
+      waves.queue = [];
+    }
+  }
+  inputs = inputs.filter((i) => !worldInputs.includes(i));
+
+  const minions = {};
+  for (const id in minionsIn) minions[id] = { ...minionsIn[id] };
   const turrets = {};
   for (const id in state.turrets ?? {}) turrets[id] = { ...state.turrets[id] };
   // 평타·포탑의 대상 후보: 챔피언 + 포탑 (스킬은 players만 보므로 포탑을 맞히지 않는다)
@@ -54,7 +83,13 @@ export function update(state, inputs, dt) {
     tickPassive(players[id], dt);
     if (players[id].revealed > 0) players[id].revealed = Math.max(0, players[id].revealed - dt);
   }
-  for (const id in turrets) tickTurret(turrets[id], state.time + dt, dt);
+  for (const id in turrets) tickTurret(turrets[id], time + dt, dt);
+
+  // 0-1. 미니언 웨이브: 일정에 맞춰 한 마리씩 생성
+  for (const spec of updateWaves(waves, time + dt, state.map)) {
+    const m = createMinion({ id: `minion-${nextId++}`, ...spec });
+    minions[m.id] = m;
+  }
 
   // 1. 선입력 → 새 입력 처리 (commands.js: 행동 불가 중 선입력 / 쿨타임 선입력)
   for (const id in players) {
@@ -89,9 +124,13 @@ export function update(state, inputs, dt) {
     if (shot) projectiles.push({ id: nextId++, ...shot });
   }
 
-  // 3. 이동
+  // 3. 이동 (챔피언·미니언은 서로 몸으로 막는다)
+  const bodies = { ...players, ...minions };
   for (const id in players) {
-    movePlayer(players[id], players, dt, state.map);
+    movePlayer(players[id], bodies, dt, state.map);
+  }
+  for (const id in minions) {
+    movePlayer(minions[id], bodies, dt, state.map);
   }
 
   // 4. 투사체 이동·적중
@@ -111,10 +150,12 @@ export function update(state, inputs, dt) {
 
   return {
     ...state,
-    time: state.time + dt,
+    time: time + dt,
     tick: state.tick + 1,
     players,
     turrets,
+    minions,
+    waves,
     projectiles,
     nextId,
     rngSeed: ctx.rng.seed,

@@ -238,6 +238,33 @@ export function createStatPanel({ getState, myId, onInput, timeControl, onReset 
     return [mode, b];
   });
 
+  // 미니언 (게임 전체)
+  const minionTitle = document.createElement('h3');
+  minionTitle.textContent = '미니언 · 게임 시간';
+  const minionGrid = document.createElement('div');
+  minionGrid.className = 'grid';
+  const world = (input) => onInput({ type: 'debug', ...input });
+  const spawnToggle = document.createElement('button');
+  spawnToggle.onclick = () => world({ action: 'setMinionSpawning', value: !getState().waves?.enabled });
+  const minionButtons = [
+    ['지금 웨이브', () => world({ action: 'spawnWave', cannon: false })],
+    ['지금 웨이브 (대포)', () => world({ action: 'spawnWave', cannon: true })],
+    ['미니언 모두 제거', () => world({ action: 'clearMinions' })],
+    ['시간 +1분', () => world({ action: 'skipTime', value: 60 })],
+    ['시간 +5분', () => world({ action: 'skipTime', value: 300 })],
+  ].map(([label, fn]) => {
+    const b = document.createElement('button');
+    b.textContent = label;
+    b.onclick = fn;
+    return b;
+  });
+  minionGrid.append(spawnToggle, ...minionButtons);
+  function refreshMinions() {
+    const on = !!getState().waves?.enabled;
+    spawnToggle.textContent = `웨이브 생성: ${on ? '켜짐' : '꺼짐'}`;
+    spawnToggle.classList.toggle('on', on);
+  }
+
   const resetBtn = document.createElement('button');
   resetBtn.textContent = '전체 초기화 (위치·체력·효과)';
   resetBtn.style.width = '100%';
@@ -261,7 +288,7 @@ export function createStatPanel({ getState, myId, onInput, timeControl, onReset 
     for (const [m, b] of dummyButtons) b.classList.toggle('on', m === mode);
   }
 
-  root.append(timeTitle, timeRow, speedRow, tabs, statsTitle, statsBox, effectTitle, grid, skillTitle, skillBox, flagTitle, flagGrid, dummyTitle, dummyRow, resetBtn, hint);
+  root.append(timeTitle, timeRow, speedRow, tabs, statsTitle, statsBox, effectTitle, grid, skillTitle, skillBox, flagTitle, flagGrid, dummyTitle, dummyRow, minionTitle, minionGrid, resetBtn, hint);
   refreshTabs();
 
   // 입력 중이 아닌 칸은 현재 값으로 계속 갱신
@@ -285,6 +312,7 @@ export function createStatPanel({ getState, myId, onInput, timeControl, onReset 
       refreshTime();
       refreshCheats();
       refreshSkills();
+      refreshMinions();
       const now = performance.now();
       if (now - lastRefresh > 100) {
         refreshValues();

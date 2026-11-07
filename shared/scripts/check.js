@@ -9,12 +9,13 @@ import { update } from '../update.js';
 import { TICK_DT } from '../constants.js';
 import { armorMultiplier, physicalDamage, mitigate, damageRaw } from '../damage.js';
 import { TURRET, turretAttackDamage, turretResist, updateTurret } from '../turret.js';
+import { MINIONS, MINION_WAVES, createWaveState, updateWaves, upgradeCount, minionStat, waveInterval } from '../minions.js';
 
 // 대부분의 검사는 같은 맵 코드를 '가로 통로'(각도 0)에서 돌린다: 좌표를 x 방향 거리로 쓰기 쉽게.
 // 실제 게임의 대각선 통로는 아래 '대각선 맵' 검사에서 따로 확인한다.
 const TEST_MAP = createLaneMap({ angle: 0, margin: 0 });
-// 기존 테스트는 포탑 없이 (포탑 테스트는 turrets: true)
-const createGameState = (opts = {}) => createRealGameState({ map: TEST_MAP, turrets: false, ...opts });
+// 기존 테스트는 포탑·미니언 없이 (포탑 테스트는 turrets: true, 미니언 테스트는 minions: true)
+const createGameState = (opts = {}) => createRealGameState({ map: TEST_MAP, turrets: false, minions: false, ...opts });
 
 let failed = false;
 const fail = (msg) => {
@@ -32,6 +33,11 @@ function duel(championId, gap = 300) {
 }
 const step = (s, inputs = []) => update(s, inputs, TICK_DT);
 const attackB = { playerId: 'a', type: 'attack', targetId: 'b' };
+const run3 = (s, n) => {
+  for (let i = 0; i < n; i++) s = step(s);
+  return s;
+};
+const laneToWorldTest = (u, v = 0) => ({ x: TEST_MAP.lane.x0 + u * TEST_MAP.lane.dirX - v * TEST_MAP.lane.dirY, y: TEST_MAP.lane.y0 + u * TEST_MAP.lane.dirY + v * TEST_MAP.lane.dirX });
 
 // 1. 데이터 검사
 for (const id in CHAMPIONS) {
@@ -1203,6 +1209,162 @@ try {
   console.log(`✓ 포탑 (위치 t=${TURRET.positions.blue}/${TURRET.positions.red}, 지형 반경 ${TURRET.obstacleRadius}: 우회·점멸·순간이동 차단, 사거리 ${TURRET.range}, 피해 ${hits.map((h) => h.amount.toFixed(1)).join('/')}, 3초 초기화·대상 바뀌어도 유지, 대상 유지·가까운 순, 타겟 불가, 어그로 전환(막혀도)·사거리 밖 제외, 포탑 평타 물리/마법·치명타 없음, 스킬 무시, 파괴·지형 유지, 성장 185→293·방어 60→40)`);
 } catch (e) {
   fail(`포탑: ${e.message}`);
+}
+
+// 미니언 M1: 웨이브 일정·구성, 업그레이드 능력치, 한 마리씩 생성, 라인 이동·충돌, 개발자 기능
+try {
+  const near = (a, b, eps = 1e-6) => Math.abs(a - b) <= eps;
+  const fmt = (t) => `${Math.floor(t / 60)}:${String(Math.round(t % 60)).padStart(2, '0')}`;
+  // 일정 전체 (40분까지): 웨이브별 시각과 구성 (파랑 기준)
+  const w = createWaveState();
+  const specs = updateWaves(w, 40 * 60, TEST_MAP);
+  const waves = [];
+  for (const sp of specs) {
+    if (sp.team !== 'blue') continue;
+    (waves[sp.wave - 1] ??= []).push(sp.type);
+  }
+  // 웨이브 시각: 일정 함수로 차례대로
+  const times = [];
+  for (let t = MINION_WAVES.firstWave; t <= 40 * 60; t += waveInterval(t)) times.push(t);
+  const has = (list) => list.every((x) => times.some((t) => near(t, x, 1e-6)));
+  if (times[0] !== 30 || times[1] !== 60 || !has([13 * 60 + 30, 14 * 60, 14 * 60 + 25, 29 * 60 + 25, 29 * 60 + 50, 30 * 60 + 10, 30 * 60 + 30])) {
+    throw new Error(`웨이브 시각이 다릅니다: ${times.slice(0, 3).map(fmt)} … ${times.filter((t) => t > 13 * 60 && t < 14.5 * 60).map(fmt)} … ${times.filter((t) => t > 29 * 60 && t < 31 * 60).map(fmt)}`);
+  }
+  if (times.some((t) => !near(t, 14 * 60 + 25) && t > 14 * 60 && t < 14 * 60 + 25)) throw new Error('14분 전환이 다릅니다');
+  if (waves.length !== times.length) throw new Error(`웨이브 수 ${waves.length} (일정 ${times.length})`);
+  // 구성: 대포는 3번째 웨이브부터, 15분 전 3번째마다, 15분부터 2번째마다, 25분부터 매번
+  const cannonWaves = waves.map((ws, i) => (ws.includes('cannon') ? i + 1 : 0)).filter(Boolean);
+  if (cannonWaves[0] !== 3 || cannonWaves[1] !== 6) throw new Error(`대포 웨이브가 3, 6번째가 아닙니다: ${cannonWaves.slice(0, 4)}`);
+  for (let i = 1; i < cannonWaves.length; i++) {
+    const t = times[cannonWaves[i] - 1];
+    const gap = cannonWaves[i] - cannonWaves[i - 1];
+    const expect = t >= 25 * 60 ? 1 : t >= 15 * 60 ? 2 : 3;
+    if (gap !== expect) throw new Error(`${fmt(t)} 대포 웨이브 간격 ${gap} (예상 ${expect})`);
+  }
+  waves.forEach((ws, i) => {
+    const t = times[i];
+    const c = ws.includes('cannon');
+    const melee = ws.filter((x) => x === 'melee').length;
+    const caster = ws.filter((x) => x === 'caster').length;
+    const em = c && t >= 14 * 60 ? 2 : 3;
+    const ec = t >= 30 * 60 ? 2 : 3;
+    if (melee !== em || caster !== ec) throw new Error(`${fmt(t)} 웨이브 구성 근접 ${melee}·원거리 ${caster} (예상 ${em}·${ec})`);
+    const order = ws.join(',');
+    const expectOrder = [...Array(em).fill('melee'), ...(c ? ['cannon'] : []), ...Array(ec).fill('caster')].join(',');
+    if (order !== expectOrder) throw new Error(`${fmt(t)} 생성 순서 ${order}`);
+  });
+
+  // 업그레이드: 첫 웨이브 1회, 90초마다 +1 / 표의 값
+  if (upgradeCount(30) !== 1 || upgradeCount(119.9) !== 1 || upgradeCount(120) !== 2 || upgradeCount(8 * 60) !== 6) throw new Error('업그레이드 횟수가 다릅니다');
+  const table = {
+    1: [465, 11, 284, 21, 835, 37.5],
+    6: [640, 14, 332, 31.25, 1260, 47.5],
+    10: [780, 26, 380, 48.25, 1600, 63.5],
+    26: [1340, 74, 572, 116.25, 2960, 126],
+    29: [1445, 80, 600, 125, 3215, 126],
+    30: [1480, 80, 600, 125, 3300, 126],
+  };
+  for (const n in table) {
+    const got = [MINIONS.melee.hp, MINIONS.melee.attackDamage, MINIONS.caster.hp, MINIONS.caster.attackDamage, MINIONS.cannon.hp, MINIONS.cannon.attackDamage].map((st) => minionStat(st, Number(n)));
+    if (got.some((v, i) => !near(v, table[n][i], 1e-9))) throw new Error(`${n}회 업그레이드 능력치 ${got.join('/')} (표 ${table[n].join('/')})`);
+  }
+  if (minionStat(MINIONS.cannon.hp, 60) !== 5850 || minionStat(MINIONS.cannon.hp, 80) !== 5850) throw new Error('대포 체력 최대 5850이 아닙니다');
+
+  // 생성: 0:30에 시작 지점에서 맨 앞(근접)부터 0.5초 간격으로 한 마리씩
+  let s = createGameState({ minions: true });
+  const spawnLog = [];
+  for (let i = 0; i < 30 * 34; i++) {
+    const before = new Set(Object.keys(s.minions));
+    s = step(s);
+    for (const id in s.minions) if (!before.has(id)) spawnLog.push({ t: s.time, m: s.minions[id] });
+  }
+  const blueLog = spawnLog.filter((e) => e.m.team === 'blue');
+  if (blueLog.length !== 6 || spawnLog.length !== 12) throw new Error(`첫 웨이브 생성 수 ${blueLog.length}/${spawnLog.length}`);
+  blueLog.forEach((e, i) => {
+    if (!near(e.t, 30 + i * MINION_WAVES.spawnInterval, 1e-6)) throw new Error(`${i + 1}번째 미니언 생성 시각 ${e.t.toFixed(3)}`);
+    if (e.m.minionType !== (i < 3 ? 'melee' : 'caster')) throw new Error(`${i + 1}번째 미니언이 ${e.m.minionType}`);
+    if (e.m.upgrade !== 1 || e.m.maxHp !== (i < 3 ? 465 : 284)) throw new Error('첫 웨이브 능력치가 업그레이드 1회 값이 아닙니다');
+  });
+  // 생성 위치: 시작 지점 (생성된 틱에 한 틱만큼 움직였을 수 있다)
+  const firstBlue = blueLog[0].m;
+  if (Math.abs(worldToLane(TEST_MAP, firstBlue.x, firstBlue.y).u - TEST_MAP.spawns.blue.x) > MINION_WAVES.moveSpeed * TICK_DT + 1e-6) throw new Error('생성 위치가 시작 지점이 아닙니다');
+
+  // 이동: 라인을 따라가며 포탑 지형에 들어가지 않고, 상대 진영 끝에 도착해 멈춘다
+  s = createGameState({ minions: true, turrets: true });
+  s = { ...s, turrets: {} }; // 포탑 공격 없이 지형만
+  const obsMin = TURRET.obstacleRadius + MINIONS.melee.pathingRadius;
+  let worst = Infinity;
+  for (let i = 0; i < 30 * 95; i++) {
+    s = step(s);
+    for (const m of Object.values(s.minions)) {
+      for (const o of s.map.obstacles) worst = Math.min(worst, Math.hypot(m.x - o.x, m.y - o.y));
+      const { u, v } = worldToLane(TEST_MAP, m.x, m.y);
+      if (u < -1e-6 || u > TEST_MAP.lane.length + 1e-6 || Math.abs(v) > TEST_MAP.lane.width / 2 + 1e-6) throw new Error('미니언이 통로 밖으로 나갔습니다');
+    }
+    if (s.time > 31) s = { ...s, waves: { ...s.waves, enabled: false, queue: [] } }; // 첫 웨이브만
+  }
+  if (worst < obsMin - 1e-6) throw new Error(`미니언이 포탑 지형 안으로 들어갔습니다 (${worst.toFixed(1)})`);
+  const blues = Object.values(s.minions).filter((m) => m.team === 'blue');
+  const lead = Math.max(...blues.map((m) => worldToLane(TEST_MAP, m.x, m.y).u));
+  if (!(lead > TEST_MAP.lane.length - 200)) throw new Error(`파랑 미니언이 상대 진영 끝에 도착하지 않았습니다 (u ${lead.toFixed(0)})`);
+  const pos1 = blues.map((m) => `${m.x.toFixed(3)},${m.y.toFixed(3)}`).join(' ');
+  s = run3(s, 30);
+  const pos2 = Object.values(s.minions).filter((m) => m.team === 'blue').map((m) => `${m.x.toFixed(3)},${m.y.toFixed(3)}`).join(' ');
+  if (pos1 !== pos2) throw new Error('끝에 도착한 미니언이 멈추지 않았습니다');
+  // 미니언끼리 겹치지 않는다 (이동 충돌 반경)
+  const ms = Object.values(s.minions);
+  for (let i = 0; i < ms.length; i++) for (let j = i + 1; j < ms.length; j++) {
+    if (Math.hypot(ms[i].x - ms[j].x, ms[i].y - ms[j].y) < ms[i].pathingRadius + ms[j].pathingRadius - 1) throw new Error('미니언끼리 겹쳤습니다');
+  }
+
+  // 챔피언과 부딪힘: 라인 가운데 서 있는 챔피언을 돌아서 지나간다
+  {
+    const id = Object.keys(CHAMPIONS)[0];
+    let q = createGameState({ minions: true });
+    const c = laneToWorldTest(2000);
+    q = addPlayer(q, createPlayer({ id: 'a', name: 'A', team: 'red', x: c.x, y: c.y, championId: id }));
+    let minGap = Infinity;
+    for (let i = 0; i < 30 * 40; i++) {
+      q = step(q);
+      for (const m of Object.values(q.minions)) minGap = Math.min(minGap, Math.hypot(m.x - q.players.a.x, m.y - q.players.a.y) - m.pathingRadius - q.players.a.pathingRadius);
+      if (q.time > 31) q = { ...q, waves: { ...q.waves, enabled: false, queue: [] } };
+    }
+    if (minGap < -1e-6) throw new Error(`미니언이 챔피언 몸을 통과했습니다 (${minGap.toFixed(1)})`);
+    if (!Object.values(q.minions).some((m) => m.team === 'blue' && worldToLane(TEST_MAP, m.x, m.y).u > 2500)) throw new Error('챔피언에 막혀 미니언이 지나가지 못했습니다');
+    // 챔피언도 미니언을 통과하지 못한다
+    const blocker = Object.values(q.minions).find((m) => m.team === 'blue');
+    let r = { ...q, minions: { [blocker.id]: { ...blocker, target: null } }, players: { ...q.players, a: { ...q.players.a, x: blocker.x - 300, y: blocker.y } } };
+    r = step(r, [{ playerId: 'a', type: 'move', x: blocker.x + 300, y: blocker.y }]);
+    let cg = Infinity;
+    for (let i = 0; i < 60; i++) {
+      r = step(r);
+      cg = Math.min(cg, Math.hypot(r.players.a.x - blocker.x, r.players.a.y - blocker.y) - r.players.a.pathingRadius - blocker.pathingRadius);
+    }
+    if (cg < -1e-6) throw new Error('챔피언이 미니언 몸을 통과했습니다');
+  }
+
+  // 개발자 기능: 생성 끄기·켜기, 시간 건너뛰기, 지금 웨이브, 모두 제거
+  const dbg = (action, extra = {}) => ({ playerId: 'x', type: 'debug', action, ...extra });
+  s = createGameState({ minions: true });
+  s = step(s, [dbg('setMinionSpawning', { value: false })]);
+  s = run3(s, 30 * 35);
+  if (Object.keys(s.minions).length || s.waves.waveCount !== 1) throw new Error('생성을 껐는데 미니언이 나왔거나 일정이 멈췄습니다');
+  s = step(s, [dbg('setMinionSpawning', { value: true })]);
+  if (!near(s.waves.nextWaveTime, 60)) throw new Error(`다시 켰을 때 다음 웨이브 ${s.waves.nextWaveTime} (예상 60)`);
+  s = step(s, [dbg('skipTime', { value: 5 * 60 })]);
+  if (!(s.time > 5 * 60) || s.turrets === undefined || !(s.waves.nextWaveTime > s.time) || s.waves.nextWaveTime - s.time > 30 + 1e-6) throw new Error('시간 건너뛰기 후 일정이 맞지 않습니다');
+  if (Object.keys(s.minions).length) throw new Error('시간 건너뛰기로 지나간 웨이브가 한꺼번에 나왔습니다');
+  s = step(s, [dbg('spawnWave', { cannon: true })]);
+  s = run3(s, 30 * 4);
+  const kinds = Object.values(s.minions).filter((m) => m.team === 'blue').map((m) => m.minionType);
+  if (!kinds.includes('cannon') || kinds.length !== 7) throw new Error(`지금 웨이브(대포 포함) 생성이 다릅니다: ${kinds}`);
+  if (Object.values(s.minions).some((m) => m.upgrade !== upgradeCount(5 * 60 + TICK_DT * 2))) throw new Error('지금 웨이브의 업그레이드가 현재 시각 기준이 아닙니다');
+  s = step(s, [dbg('clearMinions')]);
+  if (Object.keys(s.minions).length) throw new Error('미니언 모두 제거가 되지 않았습니다');
+
+  console.log(`✓ 미니언 생성·이동 (웨이브 ${times.length}개/40분: 0:30 시작, 14:00→14:25, 29:50→30:10, 대포 3·2·1웨이브마다, 14분 근접 2·30분 원거리 2, 업그레이드 표, 0.5초 간격 한 마리씩, 라인 이동·끝에서 정지, 포탑 지형·챔피언·미니언 충돌, 생성 끄기·시간 건너뛰기·지금 웨이브·제거)`);
+} catch (e) {
+  fail(`미니언: ${e.message}`);
 }
 
 if (failed) {

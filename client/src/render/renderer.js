@@ -5,6 +5,7 @@ import { drawPlayers, lerpPlayerPos } from './players.js';
 import { createClickMarker } from './clickMarker.js';
 import { drawProjectiles } from './projectiles.js';
 import { drawTurrets, drawTurretWarnings, drawTurretDebug } from './turrets.js';
+import { drawMinions, drawMinionDebug } from './minions.js';
 import { drawRangeRing } from './rangeRing.js';
 import { createDamageNumbers } from './damageNumbers.js';
 import { drawSkillIndicator } from './skillIndicator.js';
@@ -82,6 +83,8 @@ export function createRenderer(canvas) {
     if (ui.devMode) drawTurretDebug(ctx, state, me?.gameplayRadius ?? 0, upright);
     else drawTurretWarnings(ctx, state, me, focus);
     clickMarker.draw(ctx);
+    drawMinions(ctx, prevState, state, alpha, upright);
+    if (ui.devMode) drawMinionDebug(ctx, prevState, state, alpha);
     drawPlayers(ctx, prevState, state, alpha, myId, upright);
     if (ui.devMode) drawDebugOverlays(ctx, prevState, state, alpha, upright);
     drawProjectiles(ctx, prevState, state, alpha);
