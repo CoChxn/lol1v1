@@ -1281,6 +1281,11 @@ try {
     const got = [MINIONS.melee.hp, MINIONS.melee.attackDamage, MINIONS.caster.hp, MINIONS.caster.attackDamage, MINIONS.cannon.hp, MINIONS.cannon.attackDamage].map((st) => minionStat(st, Number(n)));
     if (got.some((v, i) => !near(v, table[n][i], 1e-9))) throw new Error(`${n}회 업그레이드 능력치 ${got.join('/')} (표 ${table[n].join('/')})`);
   }
+  // 반경: 근접·원거리 판정·선택 30 / 이동 충돌 20, 대포 40 / 30
+  for (const [t, g, pr] of [['melee', 30, 20], ['caster', 30, 20], ['cannon', 40, 30]]) {
+    const m = createMinion({ id: 'x', team: 'blue', type: t, upgrade: 1, wave: 1, map: TEST_MAP });
+    if (m.gameplayRadius !== g || m.selectionRadius !== g || m.pathingRadius !== pr) throw new Error(`${t} 반경 ${m.gameplayRadius}/${m.selectionRadius}/${m.pathingRadius} (예상 ${g}/${g}/${pr})`);
+  }
   if (minionStat(MINIONS.cannon.hp, 60) !== 5850 || minionStat(MINIONS.cannon.hp, 80) !== 5850) throw new Error('대포 체력 최대 5850이 아닙니다');
 
   // 생성: 0:30에 시작 지점에서 맨 앞(근접)부터 0.5초 간격으로 한 마리씩
@@ -1420,7 +1425,7 @@ try {
 
   // 근접 vs 근접: 선딜레이 0.2초(6틱) 뒤 피해 = 공격력 + 대상 현재 체력 2%, 이후 1/1.25초마다
   {
-    let q = world({ minions: [{ id: 'b1', team: 'blue', type: 'melee', u: 3000 }, { id: 'r1', team: 'red', type: 'melee', u: 3000 + 48 * 2 + 100 }] });
+    let q = world({ minions: [{ id: 'b1', team: 'blue', type: 'melee', u: 3000 }, { id: 'r1', team: 'red', type: 'melee', u: 3000 + MINIONS.melee.gameplayRadius * 2 + 100 }] });
     q = { ...q, minions: { ...q.minions, r1: { ...q.minions.r1, attackSpeed: 0.01 } } }; // r1은 거의 안 때림
     const { out } = dmgEvents(q, 60, (ev) => ev.sourceId === 'b1');
     if (!out.length) throw new Error('근접 미니언이 적 미니언을 때리지 않았습니다');
@@ -1531,7 +1536,7 @@ try {
   }
   // 대상이 죽으면 날아가던 미니언 투사체도 사라진다
   {
-    let q = world({ minions: [{ id: 'b1', team: 'blue', type: 'caster', u: 3000 }, { id: 'r1', team: 'red', type: 'melee', u: 3540, patch: { attackSpeed: 0.01, laneEnd: null } }] });
+    let q = world({ minions: [{ id: 'b1', team: 'blue', type: 'caster', u: 3000 }, { id: 'r1', team: 'red', type: 'melee', u: 3480, patch: { attackSpeed: 0.01, laneEnd: null } }] });
     for (let i = 0; i < 60 && !q.projectiles.some((p) => p.kind === 'minion'); i++) q = step(q);
     if (!q.projectiles.some((p) => p.kind === 'minion')) throw new Error('투사체 검사 준비가 안 되었습니다');
     q = step({ ...q, minions: { ...q.minions, r1: { ...q.minions.r1, hp: 0 } } });
