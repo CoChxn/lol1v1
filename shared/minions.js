@@ -8,7 +8,8 @@
 // - 생성: 진영 시작 지점에서 맨 앞 순서 미니언부터 한 마리씩 (spawnInterval 간격)
 // - 업그레이드: 첫 웨이브 = 1회, 이후 90초마다 +1. 생성될 때의 횟수로 능력치를 정하고, 살아 있는 동안 그대로.
 //   v(n) = base + early × min(n, 5) + late × max(0, n − 5)  (max를 넘지 않음)
-// - 이동: 라인을 따라 상대 진영 끝까지 일직선으로 가서 멈춘다. 챔피언·미니언·포탑 지형과 부딪힌다.
+// - 이동: 라인을 따라 상대 진영 끝까지 일직선으로 가서 멈춘다.
+//   항상 유체화 상태라 챔피언·미니언과는 서로 통과하고, 포탑 지형·벽에만 막힌다.
 //
 // 아직 없는 것: 공격·대상 선택(M2), 포탑과의 관계(M3), 첫 웨이브 특수 동작·골드/경험치(M4),
 // 이동속도 상승·어그로(나중에 구현할 것: docs/ROADMAP.md)
@@ -200,7 +201,7 @@ export function createMinion({ id, team, type, upgrade, wave, map }) {
     casting: null,
     effects: [],
     marks: [],
-    ghosted: false,
+    ghosted: true, // 항상 유체화: 챔피언·미니언과 서로 통과 (포탑 지형·벽에는 막힘)
     targetable: true,
     invulnerable: false,
   };
