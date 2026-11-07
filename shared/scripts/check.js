@@ -2,7 +2,7 @@
 import { CHAMPIONS } from '../champions/index.js';
 import { validateChampion } from '../champions/validate.js';
 import { createGameState as createRealGameState, addPlayer } from '../state.js';
-import { createLaneMap, clampToMap, worldToLane, laneDirection } from '../map.js';
+import { createLaneMap, clampToMap, worldToLane, laneDirection, laneToWorld as laneToWorldReal } from '../map.js';
 import { SUMMONER_SPELLS } from '../summoners.js';
 import { createPlayer } from '../player.js';
 import { update } from '../update.js';
@@ -940,16 +940,26 @@ try {
   };
   const tb = createGameState({ turrets: true }).turrets['turret-blue'];
   const tr = createGameState({ turrets: true }).turrets['turret-red'];
-  if (!near(worldToLane(TEST_MAP, tb.x, tb.y).u, TURRET.positions.blue) || !near(worldToLane(TEST_MAP, tr.x, tr.y).u, TURRET.positions.red)) {
-    throw new Error('포탑 위치가 라인 거리와 다릅니다');
+  for (const [t, pos] of [[tb, TURRET.positions.blue], [tr, TURRET.positions.red]]) {
+    const l = worldToLane(TEST_MAP, t.x, t.y);
+    if (!near(l.u, pos.u) || !near(l.v, pos.v)) throw new Error('포탑 위치가 통로 기준 좌표와 다릅니다');
   }
-  // 대각선 맵: 두 포탑 사이 3600, 맵 중앙 기준 대칭
+  // 미니언 통행로(라인 가운데)를 막지 않는다
+  for (const t of [tb, tr]) {
+    if (Math.abs(worldToLane(TEST_MAP, t.x, t.y).v) <= TURRET.obstacleRadius + MINIONS.melee.pathingRadius) throw new Error('포탑 지형이 미니언 통행로를 막습니다');
+  }
+  // 대각선 맵: 라인 방향 사이 3600, 맵 중앙 기준 점대칭
   const dt = createRealGameState().turrets;
   const db = dt['turret-blue'];
   const dr = dt['turret-red'];
   const realMap = createRealGameState().map;
-  if (!near(Math.hypot(db.x - dr.x, db.y - dr.y), 3600, 1e-6) || !near((db.x + dr.x) / 2, realMap.width / 2, 1e-6) || !near((db.y + dr.y) / 2, realMap.height / 2, 1e-6)) {
-    throw new Error(`대각선 맵 포탑 위치가 다릅니다: 파랑 (${db.x.toFixed(1)}, ${db.y.toFixed(1)}), 빨강 (${dr.x.toFixed(1)}, ${dr.y.toFixed(1)})`);
+  const lb = worldToLane(createRealGameState().map, db.x, db.y);
+  const lr = worldToLane(createRealGameState().map, dr.x, dr.y);
+  // 블루는 화면 왼쪽 위(x, y 모두 작아지는 쪽)로 비켜 있다
+  const onLine = laneToWorldReal(createRealGameState().map, lb.u, 0);
+  if (!(db.x < onLine.x && db.y < onLine.y)) throw new Error('블루 포탑이 라인 가운데에서 왼쪽 위로 비켜 있지 않습니다');
+  if (!near(lr.u - lb.u, 3600, 1e-6) || !near(lb.v, -lr.v, 1e-6) || !near((db.x + dr.x) / 2, realMap.width / 2, 1e-6) || !near((db.y + dr.y) / 2, realMap.height / 2, 1e-6)) {
+    throw new Error(`대각선 맵 포탑 위치가 다릅니다 (라인 방향 3600, 맵 중앙 점대칭): 파랑 (${db.x.toFixed(1)}, ${db.y.toFixed(1)}), 빨강 (${dr.x.toFixed(1)}, ${dr.y.toFixed(1)})`);
   }
 
   // 시간에 따른 능력치
@@ -1209,7 +1219,7 @@ try {
   if (s.players.a.hp !== 0 || s.turrets['turret-blue'].targetId) throw new Error('체력 0 챔피언 처리 (0에서 멈춤, 대상 해제)가 다릅니다');
 
   console.log(`✓ 포탑 공격 흐름 (포착 ${ACQ}틱 → 선딜레이 ${WIN}틱 → 발사, ${PERIOD}틱 주기, 위빙, 선딜레이 취소, 사거리 안 적으로 바꾸면 포착 생략, 어그로 포착 생략·준비 중 공격 유지)`);
-  console.log(`✓ 포탑 (위치 t=${TURRET.positions.blue}/${TURRET.positions.red}, 지형 반경 ${TURRET.obstacleRadius}: 우회·점멸·순간이동 차단, 사거리 ${TURRET.range}, 피해 ${hits.map((h) => h.amount.toFixed(1)).join('/')}, 3초 초기화·대상 바뀌어도 유지, 대상 유지·가까운 순, 타겟 불가, 어그로 전환(막혀도)·사거리 밖 제외, 포탑 평타 물리/마법·치명타 없음, 스킬 무시, 파괴·지형 유지, 성장 185→293·방어 60→40)`);
+  console.log(`✓ 포탑 (위치 u,v=${TURRET.positions.blue.u},${TURRET.positions.blue.v}/${TURRET.positions.red.u},${TURRET.positions.red.v} 통행로 비킴, 지형 반경 ${TURRET.obstacleRadius}: 우회·점멸·순간이동 차단, 사거리 ${TURRET.range}, 피해 ${hits.map((h) => h.amount.toFixed(1)).join('/')}, 3초 초기화·대상 바뀌어도 유지, 대상 유지·가까운 순, 타겟 불가, 어그로 전환(막혀도)·사거리 밖 제외, 포탑 평타 물리/마법·치명타 없음, 스킬 무시, 파괴·지형 유지, 성장 185→293·방어 60→40)`);
 } catch (e) {
   fail(`포탑: ${e.message}`);
 }
@@ -1307,6 +1317,7 @@ try {
     if (s.time > 31) s = { ...s, waves: { ...s.waves, enabled: false, queue: [] } }; // 첫 웨이브만
   }
   if (worst < obsMin - 1e-6) throw new Error(`미니언이 포탑 지형 안으로 들어갔습니다 (${worst.toFixed(1)})`);
+  if (Object.values(s.minions).some((m) => Math.abs(worldToLane(TEST_MAP, m.x, m.y).v) > 1e-6)) throw new Error('포탑 지형이 미니언 통행로를 막아 미니언이 비켜 갔습니다');
   const blues = Object.values(s.minions).filter((m) => m.team === 'blue');
   const lead = Math.max(...blues.map((m) => worldToLane(TEST_MAP, m.x, m.y).u));
   if (!(lead > TEST_MAP.lane.length - 200)) throw new Error(`파랑 미니언이 상대 진영 끝에 도착하지 않았습니다 (u ${lead.toFixed(0)})`);

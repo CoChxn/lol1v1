@@ -47,8 +47,14 @@ export const TURRET = {
   ramp: { perHit: 0.4, maxStacks: 3, resetTime: 3 },
   // 어그로 전환: 이 거리 안의 아군 챔피언이 공격당하면
   aggroAllyRange: 1400,
-  // 라인 위 위치 (파랑 끝에서 라인 방향 거리)
-  positions: { blue: 6200, red: 9800 }, // 두 포탑 사이 3600, 맵 중앙 기준 대칭
+  // 위치 (통로 기준 좌표): u = 파랑 끝에서 라인 방향 거리, v = 라인 가운데에서 가로 방향 거리
+  //   v < 0: 화면 왼쪽 위, v > 0: 오른쪽 아래. 미니언 통행로(v = 0)를 막지 않도록 비켜 둔다
+  //   (|v| > 지형 반경 100 + 미니언 이동 충돌 반경 35.7)
+  // 라인 방향 사이 3600, 맵 중앙 기준 점대칭
+  positions: {
+    blue: { u: 6200, v: -150 },
+    red: { u: 9800, v: 150 },
+  },
 };
 
 // 새 대상 우선순위 (앞일수록 먼저)
@@ -60,7 +66,8 @@ const EPSILON = 1e-6;
 export function createTurrets(map) {
   const turrets = {};
   for (const team of ['blue', 'red']) {
-    const pos = laneToWorld(map, TURRET.positions[team], 0);
+    const { u, v } = TURRET.positions[team];
+    const pos = laneToWorld(map, u, v);
     const id = `turret-${team}`;
     turrets[id] = {
       id,
