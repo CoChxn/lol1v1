@@ -1,5 +1,5 @@
 // 포탑 그리기: 팀 색 큰 원 + 체력바. 파괴되면 회색 잔해.
-// [개발자 모드] 공격 사거리 원, 지형 원, 대상 선, 피해 증가(%) 표시.
+// [개발자 모드] 공격 사거리 원, 지형 원, 대상 선, 피해 증가(%), 공격 상태(포착·선딜레이·쿨다운)와 진행 바.
 import { TURRET } from '@lol1v1/shared';
 
 const TEAM_COLORS = {
@@ -83,7 +83,7 @@ export function drawTurretWarnings(ctx, state, me, mePos) {
     const reach = t.range + me.gameplayRadius;
     const d = Math.hypot(mePos.x - t.x, mePos.y - t.y);
     if (d > reach + 400) continue;
-    const targetingMe = t.targetId === me.id;
+    const targetingMe = t.targetId === me.id || t.windupTargetId === me.id; // 포착 시작부터 빨간색
     drawTurretRange(ctx, t, me.gameplayRadius, targetingMe ? 'rgba(255, 60, 60, 0.85)' : 'rgba(255, 120, 120, 0.4)');
   }
 }
@@ -117,8 +117,37 @@ export function drawTurretDebug(ctx, state, championRadius, upright = NO_ROTATIO
       ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
       const ramp = Math.round(TURRET.ramp.perHit * t.rampStacks * 100);
       ctx.fillText(`AD ${t.attackDamage}  방어 ${t.armor}  증가 +${ramp}%${t.rampStacks ? ` (${t.rampTimer.toFixed(1)}s)` : ''}`, x, y + t.gameplayRadius + 22);
-      ctx.fillText(`다음 공격 ${t.attackTimer.toFixed(2)}s  대상 ${target?.name ?? '-'}`, x, y + t.gameplayRadius + 38);
+      const state = { idle: '대기', acquire: '포착', windup: '선딜레이', cooldown: '쿨다운' }[t.attackState] ?? t.attackState;
+      const left = t.attackState === 'acquire' ? t.acquireTimer : t.attackState === 'windup' ? t.windupTimer : t.attackTimer;
+      ctx.fillText(`${state} ${left > 0 ? left.toFixed(2) + 's' : ''}  대상 ${target?.name ?? '-'}`, x, y + t.gameplayRadius + 38);
       ctx.textAlign = 'start';
+      drawTurretTimer(ctx, t, x, y + t.gameplayRadius + 46);
     });
   }
+}
+
+/** 포탑 공격 진행 바: 포착 주황(차오름) / 선딜레이 노랑(차오름) / 쿨다운 회색(줄어듦) */
+function drawTurretTimer(ctx, t, x, top) {
+  const W = 100;
+  const H = 6;
+  let color;
+  let ratio;
+  if (t.attackState === 'acquire') {
+    color = '#ff9a3c';
+    ratio = 1 - t.acquireTimer / TURRET.acquireTime;
+  } else if (t.attackState === 'windup') {
+    color = '#ffd84a';
+    ratio = 1 - t.windupTimer / TURRET.windupTime;
+  } else if (t.attackState === 'cooldown' && t.attackTimerTotal > 0) {
+    color = '#9a9a9a';
+    const cd = t.attackTimerTotal - TURRET.windupTime;
+    ratio = cd > 0 ? t.attackTimer / cd : 0;
+  } else {
+    return;
+  }
+  const left = Math.round(x - W / 2);
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+  ctx.fillRect(left - 1, top - 1, W + 2, H + 2);
+  ctx.fillStyle = color;
+  ctx.fillRect(left, top, W * Math.min(Math.max(ratio, 0), 1), H);
 }

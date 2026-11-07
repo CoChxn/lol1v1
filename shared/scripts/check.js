@@ -8,7 +8,7 @@ import { createPlayer } from '../player.js';
 import { update } from '../update.js';
 import { TICK_DT } from '../constants.js';
 import { armorMultiplier, physicalDamage, mitigate, damageRaw } from '../damage.js';
-import { TURRET, turretAttackDamage, turretResist } from '../turret.js';
+import { TURRET, turretAttackDamage, turretResist, updateTurret } from '../turret.js';
 
 // 대부분의 검사는 같은 맵 코드를 '가로 통로'(각도 0)에서 돌린다: 좌표를 x 방향 거리로 쓰기 쉽게.
 // 실제 게임의 대각선 통로는 아래 '대각선 맵' 검사에서 따로 확인한다.
@@ -976,7 +976,65 @@ try {
   if (s.turrets['turret-blue'].targetId) throw new Error('사거리 밖 챔피언을 대상으로 잡았습니다');
   s = run(withTurrets([{ id: 'a', team: 'red', x: tb.x - edge + 1 }]), 2);
   if (s.turrets['turret-blue'].targetId !== 'a') throw new Error('사거리 안 챔피언을 대상으로 잡지 않았습니다');
-  if (!s.projectiles.some((p) => p.kind === 'turret')) throw new Error('포탑이 투사체를 쏘지 않았습니다');
+  if (s.turrets['turret-blue'].attackState !== 'acquire') throw new Error('새 대상을 잡았는데 포착 단계가 아닙니다');
+
+  // 공격 흐름: 포착 8틱(0.25초) → 선딜레이 6틱(0.2초) → 발사, 이후 36틱(1.2초)마다
+  const ACQ = Math.ceil(TURRET.acquireTime / TICK_DT - 1e-6);
+  const WIN = Math.ceil(TURRET.windupTime / TICK_DT - 1e-6);
+  const PERIOD = Math.round(1 / TURRET.attackSpeed / TICK_DT);
+  const shotTicks = (st, n, until = 3) => {
+    const out = [];
+    for (let i = 0; i < n && out.length < until; i++) {
+      st = step(st);
+      if (st.projectiles.some((p) => p.kind === 'turret' && p.ownerId === 'turret-blue' && p.x === st.turrets['turret-blue'].x && p.y === st.turrets['turret-blue'].y)) out.push(st.tick);
+    }
+    return out;
+  };
+  let tk;
+  {
+    let q = withTurrets([{ id: 'a', team: 'red', x: tb.x - 400 }]);
+    q = { ...q, players: { ...q.players, a: { ...q.players.a, invulnerable: true } } };
+    tk = shotTicks(q, 120);
+  }
+  if (tk[0] !== ACQ + WIN || tk[1] - tk[0] !== PERIOD || tk[2] - tk[1] !== PERIOD) {
+    throw new Error(`포탑 발사 틱 ${tk.join(', ')} (예상 ${ACQ + WIN}, ${ACQ + WIN + PERIOD}, ${ACQ + WIN + PERIOD * 2})`);
+  }
+  if (ACQ !== 8 || WIN !== 6 || PERIOD !== 36) throw new Error(`포착 ${ACQ}틱·선딜레이 ${WIN}틱·주기 ${PERIOD}틱 (예상 8·6·36)`);
+  const moveA = (st, x) => ({ ...st, players: { ...st.players, a: { ...st.players.a, x, target: null } } });
+  // 위빙: 포착 중 사거리 밖으로 나갔다 들어오면 포착을 처음부터
+  {
+    let q = withTurrets([{ id: 'a', team: 'red', x: tb.x - 400 }]);
+    q = run(q, ACQ - 2);
+    q = step(moveA(q, tb.x - 2000));
+    if (q.turrets['turret-blue'].targetId || q.turrets['turret-blue'].attackState !== 'idle') throw new Error('포착 중 사거리를 나갔는데 포착이 취소되지 않았습니다');
+    q = moveA(q, tb.x - 400);
+    const t0 = q.tick;
+    const w = shotTicks(q, 60, 1);
+    if (w[0] - t0 !== ACQ + WIN) throw new Error(`다시 들어온 뒤 ${w[0] - t0}틱 만에 쐈습니다 (예상 ${ACQ + WIN}, 포착 처음부터)`);
+  }
+  // 선딜레이 중 사거리 밖 → 취소, 공격 타이머 0
+  {
+    let q = withTurrets([{ id: 'a', team: 'red', x: tb.x - 400 }]);
+    q = run(q, ACQ + 2);
+    if (q.turrets['turret-blue'].attackState !== 'windup') throw new Error('선딜레이 단계가 아닙니다');
+    q = step(moveA(q, tb.x - 2000));
+    const tt = q.turrets['turret-blue'];
+    if (tt.windupTargetId || tt.attackTimer !== 0 || q.projectiles.some((p) => p.kind === 'turret')) throw new Error('선딜레이 중 사거리를 나갔는데 공격이 취소되지 않았습니다');
+  }
+  // 공격하던 대상을 잃고, 이미 사거리 안에 있던 적으로 바꾸면 포착 생략 / 대기 중 새로 들어온 적은 포착
+  {
+    let q = withTurrets([{ id: 'a', team: 'red', x: tb.x - 300 }, { id: 'b', team: 'red', x: tb.x + 600 }]);
+    q = { ...q, players: { ...q.players, a: { ...q.players.a, invulnerable: true } } };
+    q = run(q, ACQ + WIN + 2); // a에게 한 발 쏘고 쿨다운
+    if (q.turrets['turret-blue'].targetId !== 'a' || q.turrets['turret-blue'].attackState !== 'cooldown') throw new Error('대상 바꾸기 검사 준비가 안 되었습니다');
+    q = step(moveA(q, tb.x - 2000));
+    if (q.turrets['turret-blue'].targetId !== 'b' || q.turrets['turret-blue'].acquireTimer !== null) throw new Error('이미 사거리 안에 있던 적으로 바꿀 때 포착을 다시 했습니다');
+    // 포착 중에 대상을 잃으면 다음 대상은 포착을 다시 한다
+    let r2 = withTurrets([{ id: 'a', team: 'red', x: tb.x - 300 }, { id: 'b', team: 'red', x: tb.x + 600 }]);
+    r2 = run(r2, 3);
+    r2 = step(moveA(r2, tb.x - 2000));
+    if (r2.turrets['turret-blue'].targetId !== 'b' || r2.turrets['turret-blue'].attackState !== 'acquire') throw new Error('포착 중 대상을 잃었을 때 다음 대상을 포착하지 않았습니다');
+  }
   if (s.turrets['turret-red'].targetId) throw new Error('같은 팀 포탑이 공격했습니다');
 
   // 피해: 185 × 방어 관통 30% × 피해 증가 (100%, 140%, 180%, 220%, 220%), 공격 주기 1/0.83초
@@ -1026,7 +1084,7 @@ try {
   s = run(withTurrets([{ id: 'a', team: 'red', x: tb.x - 600 }, { id: 'b', team: 'red', x: tb.x + 300 }]), 2);
   if (s.turrets['turret-blue'].targetId !== 'b') throw new Error('가장 가까운 적을 먼저 고르지 않았습니다');
   // 타겟 불가가 되면 대상 해제, 날아가던 투사체도 사라진다
-  s = run(withTurrets([{ id: 'a', team: 'red', x: tb.x - 700 }]), 2);
+  s = run(withTurrets([{ id: 'a', team: 'red', x: tb.x - 700 }]), ACQ + WIN + 1);
   if (!s.projectiles.some((p) => p.kind === 'turret')) throw new Error('타겟 불가 검사용 포탑 투사체가 없습니다');
   s = step({ ...s, players: { ...s.players, a: { ...s.players.a, targetable: false } } });
   if (s.projectiles.some((p) => p.kind === 'turret') || s.turrets['turret-blue'].targetId) throw new Error('타겟 불가가 되었는데 포탑 투사체·대상이 남았습니다');
@@ -1047,6 +1105,24 @@ try {
     if (!switched && s.events.some((ev) => ev.type === 'damage' && ev.targetId === 'ally')) throw new Error('아군이 맞았는데 어그로가 전환되지 않았습니다');
   }
   if (!switched) throw new Error('어그로가 전환되지 않았습니다');
+  if (s.turrets['turret-blue'].acquireTimer !== null) throw new Error('어그로 전환인데 포착 단계를 거칩니다');
+  // 선딜레이 중 어그로: 준비 중인 공격은 원래 대상(b)에게, 다음 공격부터 c
+  {
+    let q = withTurrets([
+      { id: 'b', team: 'red', x: tb.x - 300 },
+      { id: 'c', team: 'red', x: tb.x + 600 },
+      { id: 'ally', team: 'blue', x: tb.x + 600 + champ.attack.range + champ.gameplayRadius * 2 - 50 },
+    ]);
+    q = { ...q, players: { ...q.players, b: { ...q.players.b, invulnerable: true }, ally: { ...q.players.ally, invulnerable: true } } };
+    q = run(q, ACQ + 1); // b에게 선딜레이 시작
+    if (q.turrets['turret-blue'].windupTargetId !== 'b') throw new Error('선딜레이 어그로 검사 준비가 안 되었습니다');
+    const ev = { type: 'damage', targetId: 'ally', sourceId: 'c', raw: 10, amount: 0 };
+    // 이번 틱에 c가 ally를 때린 피해 이벤트를 포탑 로직에 직접 넣어 확인
+    const tt = { ...q.turrets['turret-blue'] };
+    const units = { ...q.players, ...q.turrets, 'turret-blue': tt };
+    updateTurret(tt, units, [ev], TICK_DT);
+    if (tt.targetId !== 'c' || tt.windupTargetId !== 'b') throw new Error('선딜레이 중 어그로 전환 시 준비 중인 공격 대상이 바뀌었습니다');
+  }
   // 무적(보호막)에 막혀도 전환
   s = withTurrets([
     { id: 'b', team: 'red', x: tb.x - 300 },
@@ -1123,6 +1199,7 @@ try {
   s = run(s, 30 * 4);
   if (s.players.a.hp !== 0 || s.turrets['turret-blue'].targetId) throw new Error('체력 0 챔피언 처리 (0에서 멈춤, 대상 해제)가 다릅니다');
 
+  console.log(`✓ 포탑 공격 흐름 (포착 ${ACQ}틱 → 선딜레이 ${WIN}틱 → 발사, ${PERIOD}틱 주기, 위빙, 선딜레이 취소, 사거리 안 적으로 바꾸면 포착 생략, 어그로 포착 생략·준비 중 공격 유지)`);
   console.log(`✓ 포탑 (위치 t=${TURRET.positions.blue}/${TURRET.positions.red}, 지형 반경 ${TURRET.obstacleRadius}: 우회·점멸·순간이동 차단, 사거리 ${TURRET.range}, 피해 ${hits.map((h) => h.amount.toFixed(1)).join('/')}, 3초 초기화·대상 바뀌어도 유지, 대상 유지·가까운 순, 타겟 불가, 어그로 전환(막혀도)·사거리 밖 제외, 포탑 평타 물리/마법·치명타 없음, 스킬 무시, 파괴·지형 유지, 성장 185→293·방어 60→40)`);
 } catch (e) {
   fail(`포탑: ${e.message}`);

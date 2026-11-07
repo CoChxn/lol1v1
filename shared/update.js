@@ -102,10 +102,10 @@ export function update(state, inputs, dt) {
     return updateProjectile(proj, units, dt, ctx);
   });
 
-  // 5. 포탑: 파괴 확인 → 대상 선택(이번 틱 피해로 어그로 전환) → 발사 (투사체는 다음 틱부터 움직인다)
+  // 5. 포탑: 파괴 확인 → 대상 선택(이번 틱 피해로 어그로 전환) → 포착 → 선딜레이 → 발사 (투사체는 다음 틱부터 움직인다)
   for (const id in turrets) checkTurretDestroyed(turrets[id], ctx);
   for (const id in turrets) {
-    const shot = updateTurret(turrets[id], units, ctx.events);
+    const shot = updateTurret(turrets[id], units, ctx.events, dt);
     if (shot) projectiles.push({ id: nextId++, ...shot });
   }
 

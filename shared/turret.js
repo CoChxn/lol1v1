@@ -1,6 +1,13 @@
 // 포탑 로직. 진영마다 하나씩 라인 위에 서 있고, 사거리 안의 적을 자동으로 공격한다.
 //
-// - 공격: 선딜레이 없이 공격 주기(1 / 공격속도)마다 유도 투사체를 쏜다. 투사체는 막히지 않는다.
+// - 공격 흐름: 대기 → 포착(acquireTime) → 선딜레이(windupTime) → 발사 → 쿨다운 → 선딜레이 …
+//   공격 타이머(1 / 공격속도)는 선딜레이를 시작할 때 함께 시작한다 (챔피언 평타와 같음).
+//   투사체는 유도형이고 막히지 않는다.
+// - 포착: 새 대상을 잡으면 바로 쏘지 않고 잠깐 기다린다 → 사거리 경계를 들어갔다 나오는 '포탑 위빙'이 가능.
+//   포착 중 대상이 사거리를 벗어나면 취소, 다시 들어오면 처음부터.
+//   건너뛰는 경우: 어그로 전환 / 공격하던 대상을 잃고 바로 전 틱에도 사거리 안에 있던 적으로 바꿀 때
+// - 선딜레이 중 대상이 사거리를 벗어나거나 죽거나 타겟 불가가 되면 공격 취소, 공격 타이머 0으로.
+//   선딜레이 중 어그로 전환: 준비 중인 공격은 원래 대상에게 쏘고, 다음 공격부터 새 대상.
 // - 대상 유지: 처음 잡은 대상이 죽거나, 사거리를 벗어나거나, 타겟 불가가 될 때까지 계속 공격한다.
 // - 새 대상 우선순위: 펫 → 미니언 → 챔피언. 같은 종류 안에서는 포탑에 가장 가까운 대상.
 // - 어그로 전환: 포탑 사거리 안의 적 챔피언이, 포탑에서 1,400 안에 있는 아군 챔피언에게 피해를 주면
@@ -25,7 +32,9 @@ export const TURRET = {
   selectionRadius: 120, // 클릭 선택 반경
   obstacleRadius: 100, // 지형 반경: 캐릭터가 지나갈 수 없는 원 (파괴 후에도 남는다)
   range: 750, // 공격 사거리: 포탑 중심 ~ 대상 가장자리
-  attackSpeed: 0.83, // 초당 공격 횟수
+  attackSpeed: 1 / 1.2, // 초당 공격 횟수 (≈0.833, 공격 타이머 정확히 1.2초 = 36틱)
+  acquireTime: 0.25, // 포착 지연 (새 대상을 잡고 선딜레이를 시작하기까지)
+  windupTime: 0.2, // 선딜레이
   projectileSpeed: 1200,
   projectileRadius: 30,
   armorPen: 0.3, // 방어력 관통 (비율)
@@ -69,7 +78,13 @@ export function createTurrets(map) {
       attackDamage: TURRET.attackDamage.base,
       range: TURRET.range,
       visionRange: TURRET.visionRange,
-      attackTimer: 0, // 다음 공격까지 남은 시간
+      attackState: 'idle', // 'idle' | 'acquire' | 'windup' | 'cooldown'
+      attackTimer: 0, // 공격 타이머 남은 시간. 0이면 새 선딜레이 가능
+      attackTimerTotal: 0, // 이번 공격 타이머 전체 길이 (표시용)
+      acquireTimer: null, // 포착 남은 시간. null이면 포착 중 아님
+      windupTimer: null, // 선딜레이 남은 시간. null이면 선딜레이 중 아님
+      windupTargetId: null, // 지금 선딜레이 중인 공격의 대상
+      inRangeIds: [], // 바로 전 틱에 사거리 안에 있던 적 (포착 건너뛰기 판정)
       targetId: null, // 지금 공격 중인 대상
       rampStacks: 0, // 챔피언 상대 피해 증가 중첩 (0 ~ maxStacks)
       rampTimer: 0, // 중첩 초기화까지 남은 시간
@@ -167,41 +182,99 @@ export function tickTurret(turret, time, dt) {
   turret.armor = turret.magicResist = turretResist(time);
 }
 
+/** 선딜레이 취소: 공격 타이머를 0으로 되돌린다 */
+function cancelTurretWindup(turret) {
+  turret.windupTimer = null;
+  turret.windupTargetId = null;
+  turret.attackTimer = 0;
+  turret.attackTimerTotal = 0;
+}
+
 /**
- * 한 틱 동안의 포탑 대상 선택과 발사. (이번 틱 피해가 모두 끝난 뒤에 호출한다)
+ * 한 틱 동안의 포탑 대상 선택, 포착, 선딜레이, 발사. (이번 틱 피해가 모두 끝난 뒤에 호출한다)
  * @param {object} units  공격 대상 후보 { [id]: unit } (챔피언·포탑)
  * @param {object[]} events  이번 틱 이벤트 (어그로 전환 판정)
  * @returns {object|null} 새 투사체(아이디 없음)
  */
-export function updateTurret(turret, units, events) {
+export function updateTurret(turret, units, events, dt) {
   if (turret.destroyed) {
     turret.targetId = null;
+    turret.acquireTimer = null;
+    turret.windupTimer = null;
+    turret.windupTargetId = null;
+    turret.inRangeIds = [];
+    turret.attackState = 'idle';
     return null;
   }
+  const wasInRange = new Set(turret.inRangeIds);
+  turret.inRangeIds = Object.keys(units).filter((id) => turretCanTarget(turret, units[id]));
 
-  // 대상 유지 조건이 깨지면 놓는다
-  if (turret.targetId && !turretCanTarget(turret, units[turret.targetId])) turret.targetId = null;
+  // 선딜레이 중인 공격의 대상이 사거리 밖·사망·타겟 불가 → 취소
+  if (turret.windupTargetId && !turretCanTarget(turret, units[turret.windupTargetId])) cancelTurretWindup(turret);
 
-  // 어그로 전환 (지금 대상보다 우선)
+  // 대상 유지 조건이 깨지면 놓는다 (포착을 마친 대상이었는지 기억)
+  let lostAcquired = false;
+  if (turret.targetId && !turretCanTarget(turret, units[turret.targetId])) {
+    lostAcquired = turret.acquireTimer === null;
+    turret.targetId = null;
+    turret.acquireTimer = null;
+  }
+
+  // 어그로 전환: 포착 없이 바로 (선딜레이 중인 공격은 원래 대상에게 그대로)
   const aggro = findAggroTarget(turret, units, events);
-  if (aggro) turret.targetId = aggro.id;
+  if (aggro && aggro.id !== turret.targetId) {
+    turret.targetId = aggro.id;
+    turret.acquireTimer = null;
+  }
 
-  if (!turret.targetId) turret.targetId = pickTarget(turret, units)?.id ?? null;
-  if (!turret.targetId || turret.attackTimer > EPSILON) return null;
+  // 새 대상: 공격하던 대상을 잃었고 새 대상이 이미 사거리 안에 있었으면 포착 생략
+  if (!turret.targetId) {
+    const pick = pickTarget(turret, units);
+    if (pick) {
+      turret.targetId = pick.id;
+      turret.acquireTimer = lostAcquired && wasInRange.has(pick.id) ? null : TURRET.acquireTime;
+    }
+  }
 
-  // 발사: 피해량은 발사 순간 공격력, 피해 증가와 방어력은 맞는 순간 계산
-  turret.attackTimer = 1 / TURRET.attackSpeed;
-  return {
-    kind: 'turret',
-    ownerId: turret.id,
-    team: turret.team,
-    targetId: turret.targetId,
-    x: turret.x,
-    y: turret.y,
-    speed: TURRET.projectileSpeed,
-    radius: TURRET.projectileRadius,
-    raw: turret.attackDamage,
-  };
+  let shot = null;
+  // 포착 진행 (포착이 끝난 틱에는 선딜레이를 시작하지 않는다 → 다음 틱부터)
+  let acquiring = false;
+  if (turret.acquireTimer !== null) {
+    acquiring = true;
+    turret.acquireTimer -= dt;
+    if (turret.acquireTimer <= EPSILON) turret.acquireTimer = null;
+  }
+
+  // 선딜레이 시작: 대상 있음, 포착 끝, 공격 타이머 끝
+  if (!acquiring && turret.targetId && turret.windupTargetId === null && turret.attackTimer <= EPSILON) {
+    turret.windupTargetId = turret.targetId;
+    turret.windupTimer = TURRET.windupTime;
+    turret.attackTimer = turret.attackTimerTotal = 1 / TURRET.attackSpeed;
+  }
+
+  // 선딜레이 진행 → 발사. 피해량은 발사 순간 공격력, 피해 증가와 방어력은 맞는 순간 계산
+  if (turret.windupTargetId !== null) {
+    turret.windupTimer -= dt;
+    if (turret.windupTimer <= EPSILON) {
+      shot = {
+        kind: 'turret',
+        ownerId: turret.id,
+        team: turret.team,
+        targetId: turret.windupTargetId,
+        x: turret.x,
+        y: turret.y,
+        speed: TURRET.projectileSpeed,
+        radius: TURRET.projectileRadius,
+        raw: turret.attackDamage,
+      };
+      turret.windupTimer = null;
+      turret.windupTargetId = null;
+    }
+  }
+
+  turret.attackState =
+    turret.windupTargetId !== null ? 'windup' : turret.acquireTimer !== null ? 'acquire' : turret.attackTimer > EPSILON ? 'cooldown' : 'idle';
+  return shot;
 }
 
 /** 포탑 공격이 대상에게 들어가는 피해 (감소 전, 피해 증가 포함). 챔피언이면 중첩을 쌓는다 */
