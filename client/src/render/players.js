@@ -29,7 +29,10 @@ export function drawPlayers(ctx, prevState, state, alpha, myId, upright = NO_ROT
   for (const id in state.players) {
     drawBody(ctx, prevState, state, alpha, myId, id, upright);
   }
-  // 머리 위 UI는 다른 캐릭터 몸체에 가려지지 않도록 나중에 그린다.
+}
+
+/** 머리 위 UI (닉네임·체력바·마나바·표식). 다른 어떤 것에도 가려지지 않도록 렌더러가 맨 마지막에 그린다 */
+export function drawPlayerBars(ctx, prevState, state, alpha, myId, upright = NO_ROTATION) {
   for (const id in state.players) {
     const p = state.players[id];
     const { x, y } = lerpPlayerPos(prevState.players[id], p, alpha);

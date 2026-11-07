@@ -1,11 +1,11 @@
 // Canvas 2D 렌더러. 게임 상태를 읽어서 그리기만 하고, 상태를 바꾸지 않는다.
 import { createCamera } from './camera.js';
 import { drawArena, WALL_THICKNESS } from './arena.js';
-import { drawPlayers, lerpPlayerPos } from './players.js';
+import { drawPlayers, drawPlayerBars, lerpPlayerPos } from './players.js';
 import { createClickMarker } from './clickMarker.js';
 import { drawProjectiles } from './projectiles.js';
-import { drawTurrets, drawTurretWarnings, drawTurretDebug } from './turrets.js';
-import { drawMinions, drawMinionDebug } from './minions.js';
+import { drawTurrets, drawTurretBars, drawTurretWarnings, drawTurretDebug } from './turrets.js';
+import { drawMinions, drawMinionBars, drawMinionDebug } from './minions.js';
 import { drawRangeRing } from './rangeRing.js';
 import { createDamageNumbers } from './damageNumbers.js';
 import { drawSkillIndicator } from './skillIndicator.js';
@@ -79,17 +79,21 @@ export function createRenderer(canvas) {
     // 사거리 원: 어택땅 모드일 때 (LoL처럼)
     if (me && ui.attackMoveMode) drawRangeRing(ctx, me, focus.x, focus.y, true);
     if (me && ui.aim) drawSkillIndicator(ctx, me, focus.x, focus.y, ui.aim);
-    drawTurrets(ctx, state, upright);
+    drawTurrets(ctx, state);
     if (ui.devMode) drawTurretDebug(ctx, state, me?.gameplayRadius ?? 0, upright);
     else drawTurretWarnings(ctx, state, me, focus);
     clickMarker.draw(ctx);
-    drawMinions(ctx, prevState, state, alpha, upright);
+    drawMinions(ctx, prevState, state, alpha);
     if (ui.devMode) drawMinionDebug(ctx, prevState, state, alpha);
     drawPlayers(ctx, prevState, state, alpha, myId, upright);
     if (ui.devMode) drawDebugOverlays(ctx, prevState, state, alpha, upright);
     drawProjectiles(ctx, prevState, state, alpha);
     flashEffects.draw(ctx);
     damageNumbers.draw(ctx, upright);
+    // 체력바는 무조건 맨 앞: 월드의 다른 모든 것(몸체·투사체·효과·피해 숫자) 다음에 그린다
+    drawTurretBars(ctx, state, upright);
+    drawMinionBars(ctx, prevState, state, alpha, upright);
+    drawPlayerBars(ctx, prevState, state, alpha, myId, upright);
 
     // 화면 고정 UI
     ctx.setTransform(1, 0, 0, 1, 0, 0);

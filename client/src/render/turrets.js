@@ -12,7 +12,7 @@ const BAR_HEIGHT = 10;
 const NO_ROTATION = (wx, wy, fn) => fn(wx, wy);
 
 /** 포탑 본체 (캐릭터보다 먼저 그린다) */
-export function drawTurrets(ctx, state, upright = NO_ROTATION) {
+export function drawTurrets(ctx, state) {
   for (const t of Object.values(state.turrets ?? {})) {
     const c = TEAM_COLORS[t.team];
     if (t.destroyed) {
@@ -47,7 +47,14 @@ export function drawTurrets(ctx, state, upright = NO_ROTATION) {
     ctx.arc(t.x, t.y, t.gameplayRadius * 0.4, 0, Math.PI * 2);
     ctx.fill();
 
-    // 체력바
+  }
+}
+
+/** 포탑 체력바. 다른 어떤 것에도 가려지지 않도록 렌더러가 맨 마지막에 그린다 */
+export function drawTurretBars(ctx, state, upright = NO_ROTATION) {
+  for (const t of Object.values(state.turrets ?? {})) {
+    if (t.destroyed) continue;
+    const c = TEAM_COLORS[t.team];
     upright(t.x, t.y, (x, y) => {
       const left = Math.round(x - BAR_WIDTH / 2);
       const top = Math.round(y - t.gameplayRadius - 30);

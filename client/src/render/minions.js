@@ -11,7 +11,7 @@ const BAR_HEIGHT = 5;
 
 const NO_ROTATION = (wx, wy, fn) => fn(wx, wy);
 
-export function drawMinions(ctx, prevState, state, alpha, upright = NO_ROTATION) {
+export function drawMinions(ctx, prevState, state, alpha) {
   const prev = prevState.minions ?? {};
   for (const m of Object.values(state.minions ?? {})) {
     const { x, y } = lerpPlayerPos(prev[m.id], m, alpha);
@@ -34,10 +34,18 @@ export function drawMinions(ctx, prevState, state, alpha, upright = NO_ROTATION)
     }
 
     ctx.globalAlpha = 1;
+  }
+}
 
+/** 미니언 체력바. 다른 어떤 것에도 가려지지 않도록 렌더러가 맨 마지막에 그린다 */
+export function drawMinionBars(ctx, prevState, state, alpha, upright = NO_ROTATION) {
+  const prev = prevState.minions ?? {};
+  for (const m of Object.values(state.minions ?? {})) {
+    const { x, y } = lerpPlayerPos(prev[m.id], m, alpha);
+    const c = COLORS[m.team];
     upright(x, y, (ux, uy) => {
       const left = Math.round(ux - BAR_WIDTH / 2);
-      const top = Math.round(uy - r - 14);
+      const top = Math.round(uy - m.gameplayRadius - 14);
       ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
       ctx.fillRect(left - 1, top - 1, BAR_WIDTH + 2, BAR_HEIGHT + 2);
       ctx.fillStyle = c.bar;
