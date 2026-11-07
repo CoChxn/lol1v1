@@ -1307,10 +1307,15 @@ try {
   s = { ...s, turrets: {} }; // 포탑 공격 없이 지형만
   const obsMin = TURRET.obstacleRadius + MINIONS.melee.pathingRadius;
   let worst = Infinity;
+  let offPath = false;
+  const turretUs = s.map.obstacles.map((o) => worldToLane(TEST_MAP, o.x, o.y).u);
   for (let i = 0; i < 30 * 95; i++) {
     s = step(s);
     for (const m of Object.values(s.minions)) {
       for (const o of s.map.obstacles) worst = Math.min(worst, Math.hypot(m.x - o.x, m.y - o.y));
+      // 포탑 옆을 지날 때 라인 가운데에서 벗어나지 않는다 (포탑 지형이 통행로를 막지 않음)
+      const lm = worldToLane(TEST_MAP, m.x, m.y);
+      if (turretUs.some((tu) => Math.abs(lm.u - tu) < 300) && Math.abs(lm.v) > 1e-6) offPath = true;
       const { u, v } = worldToLane(TEST_MAP, m.x, m.y);
       if (u < -1e-6 || u > TEST_MAP.lane.length + 1e-6 || Math.abs(v) > TEST_MAP.lane.width / 2 + 1e-6) throw new Error('미니언이 통로 밖으로 나갔습니다');
     }
@@ -1318,7 +1323,7 @@ try {
     s = { ...s, minions: Object.fromEntries(Object.entries(s.minions).filter(([, m]) => m.team === 'blue')) }; // 싸우지 않게 파랑만
   }
   if (worst < obsMin - 1e-6) throw new Error(`미니언이 포탑 지형 안으로 들어갔습니다 (${worst.toFixed(1)})`);
-  if (Object.values(s.minions).some((m) => Math.abs(worldToLane(TEST_MAP, m.x, m.y).v) > 1e-6)) throw new Error('포탑 지형이 미니언 통행로를 막아 미니언이 비켜 갔습니다');
+  if (offPath) throw new Error('포탑 지형이 미니언 통행로를 막아 미니언이 비켜 갔습니다');
   const blues = Object.values(s.minions).filter((m) => m.team === 'blue');
   const lead = Math.max(...blues.map((m) => worldToLane(TEST_MAP, m.x, m.y).u));
   if (!(lead > TEST_MAP.lane.length - 200)) throw new Error(`파랑 미니언이 상대 진영 끝에 도착하지 않았습니다 (u ${lead.toFixed(0)})`);
@@ -1326,8 +1331,13 @@ try {
   s = run3(s, 30);
   const pos2 = Object.values(s.minions).filter((m) => m.team === 'blue').map((m) => `${m.x.toFixed(3)},${m.y.toFixed(3)}`).join(' ');
   if (pos1 !== pos2) throw new Error('끝에 도착한 미니언이 멈추지 않았습니다');
-  // 항상 유체화: 챔피언·미니언과 서로 통과한다
-  if (Object.values(s.minions).some((m) => !m.ghosted)) throw new Error('유체화가 아닌 미니언이 있습니다');
+  // 미니언끼리 겹치지 않는다 (이동 충돌 반경)
+  const ms = Object.values(s.minions);
+  for (let i = 0; i < ms.length; i++) for (let j = i + 1; j < ms.length; j++) {
+    if (Math.hypot(ms[i].x - ms[j].x, ms[i].y - ms[j].y) < ms[i].pathingRadius + ms[j].pathingRadius - 1) throw new Error('미니언끼리 겹쳤습니다');
+  }
+
+  // 챔피언과 부딪힘: 라인 가운데 서 있는 챔피언을 돌아서 지나간다
   {
     const id = Object.keys(CHAMPIONS)[0];
     let q = createGameState({ minions: true });
@@ -1336,20 +1346,21 @@ try {
     let minGap = Infinity;
     for (let i = 0; i < 30 * 40; i++) {
       q = step(q);
-      for (const m of Object.values(q.minions)) {
-        minGap = Math.min(minGap, Math.hypot(m.x - q.players.a.x, m.y - q.players.a.y));
-        const { v } = worldToLane(TEST_MAP, m.x, m.y);
-        if (Math.abs(v) > 1e-6) throw new Error('유체화 미니언이 챔피언·미니언을 피해 라인 가운데에서 벗어났습니다');
-      }
+      for (const m of Object.values(q.minions)) minGap = Math.min(minGap, Math.hypot(m.x - q.players.a.x, m.y - q.players.a.y) - m.pathingRadius - q.players.a.pathingRadius);
       if (q.time > 31) q = { ...q, waves: { ...q.waves, enabled: false, queue: [] } };
     }
-    if (minGap > 20) throw new Error(`미니언이 챔피언을 통과하지 않고 비켜 갔습니다 (가장 가까운 거리 ${minGap.toFixed(1)})`);
-    // 챔피언도 미니언을 통과한다
+    if (minGap < -1e-6) throw new Error(`미니언이 챔피언 몸을 통과했습니다 (${minGap.toFixed(1)})`);
+    if (!Object.values(q.minions).some((m) => m.team === 'blue' && worldToLane(TEST_MAP, m.x, m.y).u > 2500)) throw new Error('챔피언에 막혀 미니언이 지나가지 못했습니다');
+    // 챔피언도 미니언을 통과하지 못한다
     const blocker = Object.values(q.minions).find((m) => m.team === 'blue');
     let r = { ...q, minions: { [blocker.id]: { ...blocker, target: null } }, players: { ...q.players, a: { ...q.players.a, x: blocker.x - 300, y: blocker.y } } };
     r = step(r, [{ playerId: 'a', type: 'move', x: blocker.x + 300, y: blocker.y }]);
-    r = run3(r, 60);
-    if (!near(r.players.a.x, blocker.x + 300, 1e-6) || !near(r.players.a.y, blocker.y, 1e-6)) throw new Error('챔피언이 미니언을 통과하지 못했습니다');
+    let cg = Infinity;
+    for (let i = 0; i < 60; i++) {
+      r = step(r);
+      cg = Math.min(cg, Math.hypot(r.players.a.x - blocker.x, r.players.a.y - blocker.y) - r.players.a.pathingRadius - blocker.pathingRadius);
+    }
+    if (cg < -1e-6) throw new Error('챔피언이 미니언 몸을 통과했습니다');
   }
 
   // 개발자 기능: 생성 끄기·켜기, 시간 건너뛰기, 지금 웨이브, 모두 제거
@@ -1371,7 +1382,7 @@ try {
   s = step(s, [dbg('clearMinions')]);
   if (Object.keys(s.minions).length) throw new Error('미니언 모두 제거가 되지 않았습니다');
 
-  console.log(`✓ 미니언 생성·이동 (웨이브 ${times.length}개/40분: 0:30 시작, 14:00→14:25, 29:50→30:10, 대포 3·2·1웨이브마다, 14분 근접 2·30분 원거리 2, 업그레이드 표, 0.5초 간격 한 마리씩, 라인 이동·끝에서 정지, 포탑 지형 충돌, 항상 유체화(챔피언·미니언 통과), 생성 끄기·시간 건너뛰기·지금 웨이브·제거)`);
+  console.log(`✓ 미니언 생성·이동 (웨이브 ${times.length}개/40분: 0:30 시작, 14:00→14:25, 29:50→30:10, 대포 3·2·1웨이브마다, 14분 근접 2·30분 원거리 2, 업그레이드 표, 0.5초 간격 한 마리씩, 라인 이동·끝에서 정지, 포탑 지형·챔피언·미니언 충돌, 생성 끄기·시간 건너뛰기·지금 웨이브·제거)`);
 } catch (e) {
   fail(`미니언: ${e.message}`);
 }

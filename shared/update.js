@@ -138,7 +138,7 @@ export function update(state, inputs, dt) {
     if (shot) projectiles.push({ id: nextId++, ...shot });
   }
 
-  // 3. 이동 (챔피언끼리는 몸으로 막는다. 미니언은 항상 유체화)
+  // 3. 이동 (챔피언·미니언은 서로 몸으로 막는다)
   const bodies = { ...players, ...minions };
   for (const id in players) {
     movePlayer(players[id], bodies, dt, state.map);

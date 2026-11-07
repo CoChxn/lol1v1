@@ -8,8 +8,7 @@
 // - 생성: 진영 시작 지점에서 맨 앞 순서 미니언부터 한 마리씩 (spawnInterval 간격)
 // - 업그레이드: 첫 웨이브 = 1회, 이후 90초마다 +1. 생성될 때의 횟수로 능력치를 정하고, 살아 있는 동안 그대로.
 //   v(n) = base + early × min(n, 5) + late × max(0, n − 5)  (max를 넘지 않음)
-// - 이동: 라인을 따라 상대 진영 끝까지 일직선으로 가서 멈춘다.
-//   항상 유체화 상태라 챔피언·미니언과는 서로 통과하고, 포탑 지형·벽에만 막힌다.
+// - 이동: 라인을 따라 상대 진영 끝까지 일직선으로 가서 멈춘다. 챔피언·미니언·포탑 지형과 부딪힌다.
 //
 // - 공격: 챔피언 평타와 같은 흐름 (선딜레이 → 발사 → 쿨다운). 공격 타이머는 선딜레이 시작과 함께 시작.
 //   근접은 즉시 적중, 원거리·대포는 유도 투사체.
@@ -244,13 +243,14 @@ export function createMinion({ id, team, type, upgrade, wave, map }) {
     casting: null,
     effects: [],
     marks: [],
-    ghosted: true, // 항상 유체화: 챔피언·미니언과 서로 통과 (포탑 지형·벽에는 막힘)
+    ghosted: false,
     targetable: true,
     invulnerable: false,
   };
   // 목적지: 상대 진영 라인 끝 (도착하면 멈춘다)
   m.laneEnd = laneToWorld(map, team === 'blue' ? L : 0, 0); // null이면 제자리 (검사용)
   setMoveTarget(m, m.laneEnd.x, m.laneEnd.y, map);
+  m.walkingToEnd = true; // 라인 끝으로 걷는 중 (도착하면 이동 목표가 사라지고 멈춘다)
   return m;
 }
 
@@ -394,10 +394,13 @@ export function updateMinion(m, units, recent, map, dt, ctx) {
       }
     }
   } else if (!target && m.windupTargetId === null) {
-    // 대상 없음: 라인 끝으로 (이미 도착했으면 그대로)
-    if (m.laneEnd && Math.hypot(m.laneEnd.x - m.x, m.laneEnd.y - m.y) > 1) setMoveTarget(m, m.laneEnd.x, m.laneEnd.y, map);
-    else m.target = null;
+    // 대상 없음: 라인 끝으로. 걸어가다 이동 목표가 없어졌으면 도착한 것 (다른 유닛에 막혀 멈춘 경우 포함) → 그대로
+    if (!m.walkingToEnd && m.laneEnd) {
+      setMoveTarget(m, m.laneEnd.x, m.laneEnd.y, map);
+      m.walkingToEnd = true;
+    }
   }
+  if (target || m.windupTargetId !== null) m.walkingToEnd = false;
 
   if (m.windupTargetId !== null) {
     m.target = null;
