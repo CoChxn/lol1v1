@@ -48,7 +48,7 @@ export const TURRET = {
   // 어그로 전환: 이 거리 안의 아군 챔피언이 공격당하면
   aggroAllyRange: 1400,
   // 라인 위 위치 (파랑 끝에서 라인 방향 거리)
-  positions: { blue: 5600, red: 10400 },
+  positions: { blue: 6200, red: 9800 }, // 두 포탑 사이 3600, 맵 중앙 기준 대칭
 };
 
 // 새 대상 우선순위 (앞일수록 먼저)

@@ -943,10 +943,13 @@ try {
   if (!near(worldToLane(TEST_MAP, tb.x, tb.y).u, TURRET.positions.blue) || !near(worldToLane(TEST_MAP, tr.x, tr.y).u, TURRET.positions.red)) {
     throw new Error('포탑 위치가 라인 거리와 다릅니다');
   }
-  // 대각선 맵 위치 (사용자 제안 좌표, 화면 y가 아래로 늘어나므로 파랑 (4961, 8355), 빨강 (8355, 4961))
+  // 대각선 맵: 두 포탑 사이 3600, 맵 중앙 기준 대칭
   const dt = createRealGameState().turrets;
-  if (!near(dt['turret-blue'].x, 4960.9, 0.5) || !near(dt['turret-blue'].y, 8355.1, 0.5) || !near(dt['turret-red'].x, 8355.1, 0.5) || !near(dt['turret-red'].y, 4960.9, 0.5)) {
-    throw new Error(`대각선 맵 포탑 위치가 다릅니다: (${dt['turret-blue'].x.toFixed(1)}, ${dt['turret-blue'].y.toFixed(1)})`);
+  const db = dt['turret-blue'];
+  const dr = dt['turret-red'];
+  const realMap = createRealGameState().map;
+  if (!near(Math.hypot(db.x - dr.x, db.y - dr.y), 3600, 1e-6) || !near((db.x + dr.x) / 2, realMap.width / 2, 1e-6) || !near((db.y + dr.y) / 2, realMap.height / 2, 1e-6)) {
+    throw new Error(`대각선 맵 포탑 위치가 다릅니다: 파랑 (${db.x.toFixed(1)}, ${db.y.toFixed(1)}), 빨강 (${dr.x.toFixed(1)}, ${dr.y.toFixed(1)})`);
   }
 
   // 시간에 따른 능력치
