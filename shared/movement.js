@@ -53,14 +53,52 @@ function blocks(a, b) {
   return a.id !== b.id && !a.ghosted && !b.ghosted && b.hp > 0;
 }
 
-// 정면 충돌 판정 기준: 이동 방향과 "상대 → 나" 방향이 이 값보다 더 마주 보면 옆으로 비켜 간다.
-const HEAD_ON_DOT = -0.95;
-const SIDESTEP = 0.35;
+// 막힘 처리: 가는 길이 다른 유닛·지형 원에 막히면 그 둘레(접선 방향)를 따라 돌아간다.
+// 고른 쪽(왼쪽 +1 / 오른쪽 -1)은 막힘이 풀린 뒤에도 잠시 유지해서 좌우로 떨지 않게 한다.
+const AVOID_KEEP_TICKS = 15;
+// 목표 쪽과 두 접선의 차이가 이보다 작으면 '정면'으로 보고 기본 쪽(왼쪽)으로 돈다
+const HEAD_ON_EPS = 0.05;
+
+/** 막는 몸 목록 { x, y, radius }: 다른 유닛(유체화·사망 제외) + 지형 원(포탑) */
+function collectBodies(player, players, map) {
+  const bodies = [];
+  for (const id in players) {
+    const o = players[id];
+    if (blocks(player, o)) bodies.push({ x: o.x, y: o.y, radius: o.pathingRadius });
+  }
+  if (map?.obstacles) bodies.push(...map.obstacles);
+  return bodies;
+}
+
+/**
+ * (px, py)에서 (dirX, dirY)로 len만큼 갈 때 앞을 막는 몸 중 가장 가까운 것 (없으면 null)
+ * 막는다 = 도착 위치가 그 몸과 겹치고, 그 몸이 진행 방향 앞쪽(90° 안)에 있음
+ */
+function findBlocker(px, py, dirX, dirY, len, radius, bodies, skip = null) {
+  const nx = px + dirX * len;
+  const ny = py + dirY * len;
+  let best = null;
+  let bestD = Infinity;
+  for (const b of bodies) {
+    if (b === skip) continue;
+    const min = radius + b.radius;
+    if (Math.hypot(nx - b.x, ny - b.y) >= min) continue;
+    if ((b.x - px) * dirX + (b.y - py) * dirY <= 0) continue;
+    const d = Math.hypot(b.x - px, b.y - py);
+    if (d < bestD) {
+      best = b;
+      bestD = d;
+    }
+  }
+  return best;
+}
 
 /**
  * 목표를 향해 dt초만큼 이동한다.
  * - 남은 거리가 이번 이동량 이하이면 목표에 정확히 멈춘다 → 도착 지점에서 떨리지 않는다.
- * - 다른 캐릭터와 겹치면 밖으로 밀려나 가장자리를 따라 미끄러진다.
+ * - 앞이 다른 유닛·지형 원에 막히면 그 둘레를 따라 옆으로 돌아간다 (목표 쪽에 가까운 쪽, 막혀 있는 동안 같은 쪽 유지).
+ *   그쪽도 막히면(다른 유닛·벽) 반대쪽, 양쪽 다 막히면 이번 틱은 기다린다.
+ * - 목적지가 막는 몸 안이면 닿은 곳에서 멈춘다.
  */
 export function movePlayer(player, players, dt, map) {
   if (!player.target || player.casting) return;
@@ -71,60 +109,83 @@ export function movePlayer(player, players, dt, map) {
   const step = player.moveSpeed * dt;
   const dirX = dist > 0 ? dx / dist : 0;
   const dirY = dist > 0 ? dy / dist : 0;
+  const r = player.pathingRadius;
+  const bodies = collectBodies(player, players, map);
 
-  let nx;
-  let ny;
-  let arrived = false;
-  if (dist <= step) {
-    nx = player.target.x;
-    ny = player.target.y;
-    arrived = true;
-  } else {
-    nx = player.x + dirX * step;
-    ny = player.y + dirY * step;
-  }
+  let mx = dirX;
+  let my = dirY;
+  let len = Math.min(step, dist);
+  let arrived = dist <= step;
 
-  // 다른 캐릭터·지형 원(포탑)과의 충돌: 겹친 만큼 밖으로 밀어낸다
-  const bodies = [];
-  for (const id in players) {
-    if (blocks(player, players[id])) bodies.push({ x: players[id].x, y: players[id].y, radius: players[id].pathingRadius });
-  }
-  if (map?.obstacles) bodies.push(...map.obstacles);
-  for (const other of bodies) {
-    const minDist = player.pathingRadius + other.radius;
-    let ox = nx - other.x;
-    let oy = ny - other.y;
-    let od = Math.hypot(ox, oy);
-    if (od >= minDist) continue;
-
-    // 목적지가 상대 몸 안이면 닿은 곳에서 멈춘다
-    if (Math.hypot(player.target.x - other.x, player.target.y - other.y) < minDist) {
+  const blocker = len > 0 ? findBlocker(player.x, player.y, dirX, dirY, len, r, bodies) : null;
+  if (blocker) {
+    if (Math.hypot(player.target.x - blocker.x, player.target.y - blocker.y) < r + blocker.radius) {
+      // 목적지가 막는 몸 안: 닿은 곳에서 멈춘다
+      len = 0;
       arrived = true;
+    } else {
+      // 막은 몸의 둘레 방향(접선)으로 돈다
+      const ox = player.x - blocker.x;
+      const oy = player.y - blocker.y;
+      const od = Math.hypot(ox, oy) || 1;
+      const nX = ox / od;
+      const nY = oy / od;
+      const tangent = (side) => ({ x: -nY * side, y: nX * side }); // side +1: 진행 방향 기준 왼쪽으로 도는 접선
+      let side = player.avoidSide || 0;
+      if (!side) {
+        const dl = tangent(1).x * dirX + tangent(1).y * dirY;
+        side = Math.abs(dl) < HEAD_ON_EPS ? 1 : Math.sign(dl);
+      }
+      const tryMove = (sd) => {
+        const t = tangent(sd);
+        if (findBlocker(player.x, player.y, t.x, t.y, step, r, bodies, blocker)) return null;
+        const nx = player.x + t.x * step;
+        const ny = player.y + t.y * step;
+        const c = clampToMap(nx, ny, r, map);
+        if (Math.hypot(c.x - nx, c.y - ny) > 1e-6) return null; // 벽에 막힘
+        return t;
+      };
+      let t = tryMove(side);
+      if (!t) {
+        side = -side;
+        t = tryMove(side);
+      }
+      player.avoidSide = side;
+      player.avoidTicks = AVOID_KEEP_TICKS;
+      arrived = false;
+      if (t) {
+        mx = t.x;
+        my = t.y;
+        len = step;
+      } else {
+        len = 0; // 양쪽 다 막힘: 기다린다
+      }
     }
+  } else if (player.avoidTicks > 0) {
+    player.avoidTicks -= 1;
+    if (player.avoidTicks === 0) player.avoidSide = 0;
+  }
 
+  let nx = arrived && len > 0 ? player.target.x : player.x + mx * len;
+  let ny = arrived && len > 0 ? player.target.y : player.y + my * len;
+
+  // 그래도 겹치면 밖으로 밀어낸다 (안전장치)
+  for (const b of bodies) {
+    const min = r + b.radius;
+    let ox = nx - b.x;
+    let oy = ny - b.y;
+    let od = Math.hypot(ox, oy);
+    if (od >= min) continue;
     if (od === 0) {
-      // 완전히 겹친 경우: 이동 방향의 옆으로 밀어낸다
       ox = -dirY || 1;
       oy = dirX;
       od = Math.hypot(ox, oy);
     }
-    let pushX = ox / od;
-    let pushY = oy / od;
-
-    // 정면으로 부딪히면 그 자리에서 멈춰 버리므로 한쪽 옆으로 살짝 틀어 돌아가게 한다
-    if (dirX * pushX + dirY * pushY < HEAD_ON_DOT) {
-      pushX += -dirY * SIDESTEP;
-      pushY += dirX * SIDESTEP;
-      const len = Math.hypot(pushX, pushY);
-      pushX /= len;
-      pushY /= len;
-    }
-
-    nx = other.x + pushX * minDist;
-    ny = other.y + pushY * minDist;
+    nx = b.x + (ox / od) * min;
+    ny = b.y + (oy / od) * min;
   }
 
-  const clamped = clampToMap(nx, ny, player.pathingRadius, map);
+  const clamped = clampToMap(nx, ny, r, map);
   player.x = clamped.x;
   player.y = clamped.y;
   if (arrived) player.target = null;

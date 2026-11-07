@@ -1548,6 +1548,70 @@ try {
   fail(`미니언 전투: ${e.message}`);
 }
 
+// 막힘 처리: 앞이 막히면 둘레를 따라 돌아간다 (미니언·챔피언 공통)
+try {
+  const id = Object.keys(CHAMPIONS)[0];
+  const mk = (mid, team, type, u, v, patch = {}) => {
+    const m = createMinion({ id: mid, team, type, upgrade: 1, wave: 1, map: TEST_MAP });
+    return { ...m, ...laneToWorldTest(u, v), target: null, laneEnd: null, ...patch };
+  };
+  // 1) 나란히 선 아군 2마리 뒤의 근접 미니언이 돌아서 앞의 적을 때린다
+  {
+    const wall = { moveSpeed: 0, attackSpeed: 0.001 };
+    let q = createGameState();
+    q = {
+      ...q,
+      minions: {
+        back: mk('back', 'blue', 'melee', 3000, 0),
+        w1: mk('w1', 'blue', 'melee', 3060, -28, wall),
+        w2: mk('w2', 'blue', 'melee', 3060, 28, wall),
+        enemy: mk('enemy', 'red', 'melee', 3300, 0, { moveSpeed: 0, attackSpeed: 0.001, hp: 99999, maxHp: 99999 }),
+      },
+    };
+    let hit = false;
+    for (let i = 0; i < 90 && !hit; i++) {
+      q = step(q);
+      hit = q.events.some((ev) => ev.type === 'damage' && ev.sourceId === 'back');
+    }
+    if (!hit) throw new Error(`아군 뒤에 막힌 근접 미니언이 돌아가지 못했습니다 (상태 ${q.minions.back.attackState}, 위치 u ${worldToLane(TEST_MAP, q.minions.back.x, q.minions.back.y).u.toFixed(0)})`);
+  }
+  // 2) 챔피언이 라인을 가로막은 미니언 줄을 돌아서 목적지에 도착하고, 도는 쪽을 바꾸며 떨지 않는다
+  {
+    let q = createGameState();
+    const still = { moveSpeed: 0, attackSpeed: 0.001 };
+    q = { ...q, minions: { m1: mk('m1', 'blue', 'melee', 2300, -55, still), m2: mk('m2', 'blue', 'melee', 2300, 0, still), m3: mk('m3', 'blue', 'melee', 2300, 55, still) } };
+    q = addPlayer(q, createPlayer({ id: 'a', name: 'A', team: 'blue', ...laneToWorldTest(2000, 0), championId: id }));
+    const dest = laneToWorldTest(2600, 0);
+    q = step(q, [{ playerId: 'a', type: 'move', x: dest.x, y: dest.y }]);
+    let flips = 0;
+    let last = 0;
+    let t;
+    for (t = 0; t < 30 * 4 && q.players.a.target; t++) {
+      q = step(q);
+      const sd = q.players.a.avoidSide;
+      if (sd && last && sd !== last) flips++;
+      if (sd) last = sd;
+    }
+    if (q.players.a.target || Math.hypot(q.players.a.x - dest.x, q.players.a.y - dest.y) > 1e-6) throw new Error('미니언 줄을 돌아서 목적지에 도착하지 못했습니다');
+    if (flips > 1) throw new Error(`돌아가는 쪽이 ${flips}번 바뀌었습니다 (떨림)`);
+    const straight = 600 / CHAMPIONS[id].moveSpeed;
+    if (t * TICK_DT > straight * 1.6) throw new Error(`돌아가는 데 너무 오래 걸렸습니다 (${(t * TICK_DT).toFixed(2)}초, 직선 ${straight.toFixed(2)}초)`);
+  }
+  // 3) 웨이브끼리 싸울 때 전투 구역의 미니언이 모두 전투에 참여한다 (걷기·멈춤 상태로 갇힌 미니언 없음)
+  {
+    let q = createGameState({ minions: true });
+    const mid = TEST_MAP.lane.length / 2;
+    for (const t of [60, 62, 64, 66]) {
+      while (q.time < t) q = step(q);
+      const idle = Object.values(q.minions).filter((m) => Math.abs(worldToLane(TEST_MAP, m.x, m.y).u - mid) < 900 && m.attackState === 'idle' && !m.attackTargetId);
+      if (idle.length) throw new Error(`${t}초: 전투 구역에서 싸우지 않는 미니언 ${idle.length}마리`);
+    }
+  }
+  console.log('✓ 막힘 처리 (아군 뒤 근접 미니언 우회 후 공격, 챔피언이 미니언 줄 우회·떨림 없음, 웨이브 전투에서 갇힌 미니언 없음)');
+} catch (e) {
+  fail(`막힘 처리: ${e.message}`);
+}
+
 if (failed) {
   console.log('\n검사 실패: 위 항목을 고친 뒤 다시 실행하세요.');
   process.exit(1);

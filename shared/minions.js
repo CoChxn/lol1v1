@@ -248,6 +248,8 @@ export function createMinion({ id, team, type, upgrade, wave, map }) {
     effects: [],
     marks: [],
     ghosted: false,
+    avoidSide: 0, // 막혔을 때 돌아가는 쪽 (movement.js)
+    avoidTicks: 0,
     targetable: true,
     invulnerable: false,
   };

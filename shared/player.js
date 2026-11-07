@@ -74,6 +74,8 @@ export function createPlayer({ id, name, team, x, y, championId = DEFAULT_CHAMPI
     patrolAnchor: isDummy ? { x, y } : null, // [허수아비] 왔다 갔다 기준 위치
     // 유체화: true면 다른 캐릭터와의 이동 충돌을 무시한다
     ghosted: false,
+    avoidSide: 0, // 막혔을 때 돌아가는 쪽 (+1 왼쪽, -1 오른쪽, 0 없음) (movement.js)
+    avoidTicks: 0, // 막힘이 풀린 뒤 돌아가는 쪽을 유지할 남은 틱
     isDummy,
   };
 }
