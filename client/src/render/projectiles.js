@@ -37,6 +37,23 @@ export function drawProjectiles(ctx, prevState, state, alpha) {
       continue;
     }
 
+    if (proj.kind === 'turret') {
+      // 포탑 공격: 팀 색 큰 구슬
+      const tc = proj.team === 'red' ? '255, 90, 60' : '90, 160, 255';
+      ctx.fillStyle = `rgba(${tc}, 0.35)`;
+      ctx.beginPath();
+      ctx.arc(x, y, proj.radius * 1.6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = `rgb(${tc})`;
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(x, y, proj.radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      continue;
+    }
+
     // 빛 번짐
     ctx.fillStyle = `rgba(${color}, 0.3)`;
     ctx.beginPath();

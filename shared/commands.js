@@ -30,14 +30,15 @@ function isLockedOut(player) {
 }
 
 /** 명령 하나 실행 */
-function execute(players, player, cmd, map) {
+// units: 평타 대상 후보 (챔피언 + 포탑). 없으면 players
+function execute(players, player, cmd, map, units = players) {
   if (cmd.type === 'move') {
     cancelAttack(player);
     setMoveTarget(player, cmd.x, cmd.y, map);
   } else if (cmd.type === 'attack') {
-    orderAttack(player, players[cmd.targetId]);
+    orderAttack(player, units[cmd.targetId]);
   } else if (cmd.type === 'attackMove') {
-    orderAttackMove(player, players, cmd.x, cmd.y, map);
+    orderAttackMove(player, units, cmd.x, cmd.y, map);
   } else if (cmd.type === 'cast') {
     orderCast(player, cmd.skill, cmd.x, cmd.y);
     // 스킬이 실제로 시전되면 쿨타임 선입력은 모두 취소된다
@@ -46,7 +47,7 @@ function execute(players, player, cmd, map) {
 }
 
 /** 행동 불가가 아닐 때의 명령 처리: 바로 실행, 쿨타임 선입력, 또는 버림 */
-function handle(players, player, cmd, map) {
+function handle(players, player, cmd, map, units) {
   if (cmd.type === 'cast') {
     const st = player.skills[cmd.skill];
     const data = getSkillData(player, cmd.skill);
@@ -58,11 +59,11 @@ function handle(players, player, cmd, map) {
       return;
     }
   }
-  execute(players, player, cmd, map);
+  execute(players, player, cmd, map, units);
 }
 
 /** 새로 들어온 명령 처리 */
-export function submitCommand(players, player, cmd, map, ctx) {
+export function submitCommand(players, player, cmd, map, ctx, units = players) {
   if (cmd.type === 'summoner') {
     // 소환사 주문(점멸 등)은 시전 시간이 없어 행동 불가 중에도 바로 쓴다 (진행 중인 스킬 시전은 끊지 않음)
     orderSummoner(player, players, cmd.slot, cmd.x, cmd.y, map, ctx);
@@ -86,18 +87,18 @@ export function submitCommand(players, player, cmd, map, ctx) {
     return;
   }
   player.queuedCommand = null;
-  handle(players, player, cmd, map);
+  handle(players, player, cmd, map, units);
 }
 
 /** 저장된 선입력 중 이제 실행 가능한 것을 실행한다 (매 틱 입력 처리 전, 그리고 시전이 끝난 직후) */
-export function runQueuedCommands(players, player, map) {
+export function runQueuedCommands(players, player, map, units = players) {
   if (isLockedOut(player)) return;
 
   // ① 행동 불가 중 선입력: 일반 입력처럼 다시 처리 (쿨타임 중인 스킬이면 쿨타임 선입력으로 옮겨질 수 있다)
   if (player.queuedCommand) {
     const cmd = player.queuedCommand;
     player.queuedCommand = null;
-    handle(players, player, cmd, map);
+    handle(players, player, cmd, map, units);
     if (isLockedOut(player)) return;
   }
 
@@ -107,7 +108,7 @@ export function runQueuedCommands(players, player, map) {
     if (!q || player.skills[key]?.cooldown > EPSILON) continue;
     const { [key]: _, ...rest } = player.queuedCasts;
     player.queuedCasts = rest;
-    execute(players, player, { type: 'cast', skill: key, x: q.x, y: q.y }, map);
+    execute(players, player, { type: 'cast', skill: key, x: q.x, y: q.y }, map, units);
     if (player.casting) return;
   }
 }

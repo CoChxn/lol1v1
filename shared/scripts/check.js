@@ -8,11 +8,13 @@ import { createPlayer } from '../player.js';
 import { update } from '../update.js';
 import { TICK_DT } from '../constants.js';
 import { armorMultiplier, physicalDamage, mitigate, damageRaw } from '../damage.js';
+import { TURRET, turretAttackDamage, turretResist } from '../turret.js';
 
 // 대부분의 검사는 같은 맵 코드를 '가로 통로'(각도 0)에서 돌린다: 좌표를 x 방향 거리로 쓰기 쉽게.
 // 실제 게임의 대각선 통로는 아래 '대각선 맵' 검사에서 따로 확인한다.
 const TEST_MAP = createLaneMap({ angle: 0, margin: 0 });
-const createGameState = (opts = {}) => createRealGameState({ map: TEST_MAP, ...opts });
+// 기존 테스트는 포탑 없이 (포탑 테스트는 turrets: true)
+const createGameState = (opts = {}) => createRealGameState({ map: TEST_MAP, turrets: false, ...opts });
 
 let failed = false;
 const fail = (msg) => {
@@ -913,6 +915,217 @@ try {
   console.log(`✓ 대각선 맵 (${map.width.toFixed(0)}×${map.height.toFixed(0)} 안에 통로 ${length}×${width}: 시작 지점, 옆 벽 충돌, 벽 미끄러짐, 벽 밖 어택땅·순간이동, 라인 평타, 허수아비 왔다 갔다)`);
 } catch (e) {
   fail(`대각선 맵: ${e.message}`);
+}
+
+// 포탑
+try {
+  const id = Object.keys(CHAMPIONS)[0];
+  const champ = CHAMPIONS[id];
+  const near = (a, b, eps = 1e-6) => Math.abs(a - b) <= eps;
+  // 포탑만 있는 상태 + 챔피언 목록 [{ id, team, x, y? }]
+  const withTurrets = (units, opts = {}) => {
+    let s = createGameState({ turrets: true, ...opts });
+    for (const u of units) s = addPlayer(s, createPlayer({ championId: id, name: u.id, y: s.turrets['turret-blue'].y, ...u }));
+    return s;
+  };
+  const run = (s, n, inputs = []) => {
+    for (let i = 0; i < n; i++) s = step(s, i === 0 ? inputs : []);
+    return s;
+  };
+  const tb = createGameState({ turrets: true }).turrets['turret-blue'];
+  const tr = createGameState({ turrets: true }).turrets['turret-red'];
+  if (!near(worldToLane(TEST_MAP, tb.x, tb.y).u, TURRET.positions.blue) || !near(worldToLane(TEST_MAP, tr.x, tr.y).u, TURRET.positions.red)) {
+    throw new Error('포탑 위치가 라인 거리와 다릅니다');
+  }
+  // 대각선 맵 위치 (사용자 제안 좌표, 화면 y가 아래로 늘어나므로 파랑 (4961, 8355), 빨강 (8355, 4961))
+  const dt = createRealGameState().turrets;
+  if (!near(dt['turret-blue'].x, 4960.9, 0.5) || !near(dt['turret-blue'].y, 8355.1, 0.5) || !near(dt['turret-red'].x, 8355.1, 0.5) || !near(dt['turret-red'].y, 4960.9, 0.5)) {
+    throw new Error(`대각선 맵 포탑 위치가 다릅니다: (${dt['turret-blue'].x.toFixed(1)}, ${dt['turret-blue'].y.toFixed(1)})`);
+  }
+
+  // 시간에 따른 능력치
+  if (turretAttackDamage(0) !== 185 || turretAttackDamage(59.9) !== 185 || turretAttackDamage(60) !== 194 || turretAttackDamage(12 * 60) !== 293 || turretAttackDamage(30 * 60) !== 293) {
+    throw new Error('포탑 공격력 성장이 185 + 9/분 (최대 293)이 아닙니다');
+  }
+  if (turretResist(0) !== 60 || turretResist(719) !== 60 || turretResist(720) !== 40) throw new Error('포탑 방어력이 12분에 60 → 40이 되지 않습니다');
+
+  // 지형: 포탑을 가로질러 이동하면 돌아서 지나가고, 포탑 원 안으로 들어가지 않는다
+  const minGap = TURRET.obstacleRadius + champ.pathingRadius;
+  let s = withTurrets([{ id: 'a', team: 'red', x: tb.x - 600 }]);
+  s = { ...s, turrets: {} }; // 공격받지 않게 포탑 유닛만 빼고 지형은 남긴다
+  s = step(s, [{ playerId: 'a', type: 'move', x: tb.x + 600, y: tb.y }]);
+  let minD = Infinity;
+  for (let i = 0; i < 30 * 6; i++) {
+    s = step(s);
+    minD = Math.min(minD, Math.hypot(s.players.a.x - tb.x, s.players.a.y - tb.y));
+  }
+  if (minD < minGap - 1e-6) throw new Error(`포탑 지형 안으로 들어갔습니다 (중심 거리 ${minD.toFixed(1)})`);
+  if (!(s.players.a.x > tb.x + 500)) throw new Error('포탑 지형에 막혀 반대편으로 지나가지 못했습니다');
+  // 포탑 가운데를 찍으면 바깥이 목표, 순간이동·점멸로도 들어갈 수 없다
+  s = withTurrets([{ id: 'a', team: 'blue', x: tb.x - 300 }]);
+  let t = step(s, [{ playerId: 'a', type: 'move', x: tb.x, y: tb.y }]);
+  if (Math.hypot(t.players.a.target.x - tb.x, t.players.a.target.y - tb.y) < minGap - 1e-6) throw new Error('포탑 지형 안이 이동 목표가 되었습니다');
+  t = step(s, [{ playerId: 'a', type: 'summoner', slot: 'F', x: tb.x, y: tb.y }]);
+  if (Math.hypot(t.players.a.x - tb.x, t.players.a.y - tb.y) < minGap - 1e-6) throw new Error('점멸로 포탑 지형 안에 들어갔습니다');
+  t = step(s, [{ playerId: 'a', type: 'debug', action: 'teleport', x: tb.x + 10, y: tb.y }]);
+  if (Math.hypot(t.players.a.x - tb.x, t.players.a.y - tb.y) < minGap - 1e-6) throw new Error('순간이동으로 포탑 지형 안에 들어갔습니다');
+
+  // 사거리: 포탑 중심 ~ 챔피언 가장자리 750
+  const edge = TURRET.range + champ.gameplayRadius;
+  s = run(withTurrets([{ id: 'a', team: 'red', x: tb.x - edge - 1 }]), 5);
+  if (s.turrets['turret-blue'].targetId) throw new Error('사거리 밖 챔피언을 대상으로 잡았습니다');
+  s = run(withTurrets([{ id: 'a', team: 'red', x: tb.x - edge + 1 }]), 2);
+  if (s.turrets['turret-blue'].targetId !== 'a') throw new Error('사거리 안 챔피언을 대상으로 잡지 않았습니다');
+  if (!s.projectiles.some((p) => p.kind === 'turret')) throw new Error('포탑이 투사체를 쏘지 않았습니다');
+  if (s.turrets['turret-red'].targetId) throw new Error('같은 팀 포탑이 공격했습니다');
+
+  // 피해: 185 × 방어 관통 30% × 피해 증가 (100%, 140%, 180%, 220%, 220%), 공격 주기 1/0.83초
+  s = withTurrets([{ id: 'a', team: 'red', x: tb.x - 400 }]);
+  s = { ...s, players: { ...s.players, a: { ...s.players.a, hp: 5000, maxHp: 5000 } } }; // 5발을 다 맞도록
+  const hits = [];
+  const hitTicks = [];
+  for (let i = 0; i < Math.ceil(30 * 5.5 / TURRET.attackSpeed); i++) {
+    s = step(s);
+    for (const ev of s.events) if (ev.type === 'damage' && ev.sourceId === 'turret-blue') { hits.push(ev); hitTicks.push(s.tick); }
+    if (hits.length >= 5) break;
+  }
+  const mult = armorMultiplier(champ.armor * (1 - TURRET.armorPen));
+  const expectRaw = [1, 1.4, 1.8, 2.2, 2.2].map((m) => 185 * m);
+  hits.forEach((ev, i) => {
+    if (!near(ev.raw, expectRaw[i], 1e-6) || !near(ev.amount, expectRaw[i] * mult, 1e-6)) {
+      throw new Error(`${i + 1}번째 포탑 공격 피해 ${ev.raw.toFixed(1)} → ${ev.amount.toFixed(1)} (예상 ${expectRaw[i].toFixed(1)} → ${(expectRaw[i] * mult).toFixed(1)})`);
+    }
+  });
+  if (hits.length < 5) throw new Error(`포탑 공격이 ${hits.length}번만 맞았습니다`);
+  const gap = (hitTicks[2] - hitTicks[1]) * TICK_DT;
+  if (Math.abs(gap - 1 / TURRET.attackSpeed) > TICK_DT + 1e-6) throw new Error(`포탑 공격 간격 ${gap.toFixed(2)}초 (예상 ${(1 / TURRET.attackSpeed).toFixed(2)})`);
+  // 3초 동안 안 맞으면 초기화: 사거리 밖으로 나갔다가 돌아온다
+  let r = { ...s, players: { ...s.players, a: { ...s.players.a, x: tb.x - 2000, target: null } } };
+  r = run(r, 30 * 3 + 30);
+  if (r.turrets['turret-blue'].rampStacks !== 0) throw new Error('3초가 지나도 피해 증가가 초기화되지 않았습니다');
+  // 3초 안에 다시 맞으면 유지 (대상이 바뀌어도): 다른 챔피언 b가 바로 들어온다
+  r = { ...s, players: { ...s.players, a: { ...s.players.a, x: tb.x - 2000, target: null } } };
+  r = addPlayer(r, createPlayer({ id: 'b', name: 'b', team: 'red', x: tb.x + 400, y: tb.y, championId: id }));
+  let bHit = null;
+  for (let i = 0; i < 60 && !bHit; i++) {
+    r = step(r);
+    bHit = r.events.find((ev) => ev.type === 'damage' && ev.targetId === 'b' && ev.sourceId === 'turret-blue');
+  }
+  if (!bHit || !near(bHit.raw, 185 * 2.2)) throw new Error(`대상을 바꾸니 피해 증가가 초기화되었습니다 (${bHit?.raw.toFixed(1)})`);
+
+  // 대상 유지: 처음 잡은 대상이 사거리 안에 있으면 더 가까운 적이 와도 바꾸지 않는다
+  s = run(withTurrets([{ id: 'a', team: 'red', x: tb.x - 600 }]), 3);
+  s = addPlayer(s, createPlayer({ id: 'b', name: 'b', team: 'red', x: tb.x + 250, y: tb.y, championId: id }));
+  s = run(s, 30);
+  if (s.turrets['turret-blue'].targetId !== 'a') throw new Error('더 가까운 적이 오자 대상을 바꿨습니다');
+  // 대상이 사거리 밖으로 나가면 다음 대상으로
+  s = { ...s, players: { ...s.players, a: { ...s.players.a, x: tb.x - 2000 } } };
+  s = run(s, 2);
+  if (s.turrets['turret-blue'].targetId !== 'b') throw new Error('대상이 사거리 밖으로 나갔는데 다음 대상으로 바꾸지 않았습니다');
+  // 처음 고를 때는 가장 가까운 적
+  s = run(withTurrets([{ id: 'a', team: 'red', x: tb.x - 600 }, { id: 'b', team: 'red', x: tb.x + 300 }]), 2);
+  if (s.turrets['turret-blue'].targetId !== 'b') throw new Error('가장 가까운 적을 먼저 고르지 않았습니다');
+  // 타겟 불가가 되면 대상 해제, 날아가던 투사체도 사라진다
+  s = run(withTurrets([{ id: 'a', team: 'red', x: tb.x - 700 }]), 2);
+  if (!s.projectiles.some((p) => p.kind === 'turret')) throw new Error('타겟 불가 검사용 포탑 투사체가 없습니다');
+  s = step({ ...s, players: { ...s.players, a: { ...s.players.a, targetable: false } } });
+  if (s.projectiles.some((p) => p.kind === 'turret') || s.turrets['turret-blue'].targetId) throw new Error('타겟 불가가 되었는데 포탑 투사체·대상이 남았습니다');
+
+  // 어그로: 포탑 사거리 안의 적 챔피언(c)이 포탑 근처 아군 챔피언(ally)을 때리면 c로 전환
+  s = withTurrets([
+    { id: 'b', team: 'red', x: tb.x - 300 }, // 포탑이 먼저 잡는 대상
+    { id: 'c', team: 'red', x: tb.x + 600 }, // 공격자
+    { id: 'ally', team: 'blue', x: tb.x + 600 + champ.attack.range + champ.gameplayRadius * 2 - 50 },
+  ]);
+  s = run(s, 3);
+  if (s.turrets['turret-blue'].targetId !== 'b') throw new Error('어그로 검사 준비: 포탑이 b를 잡지 않았습니다');
+  s = step(s, [{ playerId: 'c', type: 'attack', targetId: 'ally' }]);
+  let switched = false;
+  for (let i = 0; i < 60 && !switched; i++) {
+    s = step(s);
+    switched = s.turrets['turret-blue'].targetId === 'c';
+    if (!switched && s.events.some((ev) => ev.type === 'damage' && ev.targetId === 'ally')) throw new Error('아군이 맞았는데 어그로가 전환되지 않았습니다');
+  }
+  if (!switched) throw new Error('어그로가 전환되지 않았습니다');
+  // 무적(보호막)에 막혀도 전환
+  s = withTurrets([
+    { id: 'b', team: 'red', x: tb.x - 300 },
+    { id: 'c', team: 'red', x: tb.x + 600 },
+    { id: 'ally', team: 'blue', x: tb.x + 600 + champ.attack.range + champ.gameplayRadius * 2 - 50 },
+  ]);
+  s = run(s, 3);
+  s = { ...s, players: { ...s.players, ally: { ...s.players.ally, invulnerable: true } } };
+  s = step(s, [{ playerId: 'c', type: 'attack', targetId: 'ally' }]);
+  switched = false;
+  for (let i = 0; i < 60 && !switched; i++) {
+    s = step(s);
+    switched = s.turrets['turret-blue'].targetId === 'c';
+  }
+  if (!switched) throw new Error('피해가 막혔을 때 어그로가 전환되지 않았습니다');
+  // 공격자가 포탑 사거리 밖이면 전환 안 됨
+  s = withTurrets([
+    { id: 'b', team: 'red', x: tb.x - 300 },
+    { id: 'c', team: 'red', x: tb.x + 1000 },
+    { id: 'ally', team: 'blue', x: tb.x + 1000 - champ.attack.range - champ.gameplayRadius * 2 + 50 },
+  ]);
+  s = run(s, 3);
+  s = step(s, [{ playerId: 'c', type: 'attack', targetId: 'ally' }]);
+  for (let i = 0; i < 60; i++) {
+    s = step(s);
+    if (s.turrets['turret-blue'].targetId === 'c') throw new Error('포탑 사거리 밖 공격자로 어그로가 전환되었습니다');
+  }
+
+  // 챔피언이 포탑 공격: 총 공격력 + 주문력 60%, 치명타 없음, 물리/마법은 추가 공격력 vs 주문력 60%
+  const attackTurret = { playerId: 'a', type: 'attack', targetId: 'turret-red' };
+  const firstTurretHit = (p) => {
+    let q = withTurrets([{ id: 'a', team: 'blue', x: tr.x - 500, ...p }]);
+    q = { ...q, players: { ...q.players, a: { ...q.players.a, ...p, invulnerable: true } } };
+    q = step(q, [attackTurret]);
+    for (let i = 0; i < 90; i++) {
+      q = step(q);
+      const ev = q.events.find((e) => e.type === 'damage' && e.targetId === 'turret-red');
+      if (ev) return ev;
+    }
+    return null;
+  };
+  let ev = firstTurretHit({ critChance: 1 });
+  if (!ev || ev.crit || !near(ev.raw, champ.attack.damage) || ev.damageType !== 'physical' || !near(ev.amount, champ.attack.damage * armorMultiplier(60))) {
+    throw new Error(`포탑 평타 피해가 다릅니다 (${ev?.raw}, ${ev?.damageType}, 치명타 ${ev?.crit})`);
+  }
+  ev = firstTurretHit({ abilityPower: 100 });
+  if (!ev || !near(ev.raw, champ.attack.damage + 60) || ev.damageType !== 'magic') throw new Error('주문력이 높을 때 포탑 평타가 마법 피해 (공격력 + 주문력 60%)가 아닙니다');
+  ev = firstTurretHit({ attackDamage: champ.attack.damage + 80, abilityPower: 100 });
+  if (!ev || !near(ev.raw, champ.attack.damage + 80 + 60) || ev.damageType !== 'physical') throw new Error('추가 공격력이 높을 때 포탑 평타가 물리 피해가 아닙니다');
+  // 스킬은 포탑을 맞히지 않는다 (Q를 포탑 쪽으로)
+  s = withTurrets([{ id: 'a', team: 'blue', x: tr.x - 500 }]);
+  s = { ...s, players: { ...s.players, a: { ...s.players.a, invulnerable: true } } };
+  s = run(s, 60, [{ playerId: 'a', type: 'cast', skill: 'Q', x: tr.x, y: tr.y }]);
+  if (s.turrets['turret-red'].hp !== TURRET.maxHp) throw new Error('스킬이 포탑을 맞혔습니다');
+
+  // 파괴: 체력 0 → 파괴, 공격 중단, 지형은 남는다
+  s = withTurrets([{ id: 'a', team: 'blue', x: tr.x - 500 }]);
+  s = { ...s, players: { ...s.players, a: { ...s.players.a, invulnerable: true } }, turrets: { ...s.turrets, 'turret-red': { ...s.turrets['turret-red'], hp: 1 } } };
+  s = step(s, [attackTurret]);
+  for (let i = 0; i < 90 && !s.turrets['turret-red'].destroyed; i++) s = step(s);
+  const dead = s.turrets['turret-red'];
+  if (!dead.destroyed || dead.hp !== 0 || dead.targetable !== false) throw new Error('체력 0인 포탑이 파괴되지 않았습니다');
+  s = step(s);
+  if (s.players.a.attackTargetId) throw new Error('파괴된 포탑을 계속 공격합니다');
+  const shotsBefore = s.projectiles.filter((p) => p.ownerId === 'turret-red').length;
+  s = run(s, 60);
+  if (s.turrets['turret-red'].targetId || s.projectiles.filter((p) => p.ownerId === 'turret-red').length > shotsBefore) throw new Error('파괴된 포탑이 공격합니다');
+  if (!s.map.obstacles.some((o) => o.id === 'turret-red')) throw new Error('파괴 후 포탑 지형이 사라졌습니다');
+  t = step(s, [{ playerId: 'a', type: 'debug', action: 'teleport', x: tr.x, y: tr.y }]);
+  if (Math.hypot(t.players.a.x - tr.x, t.players.a.y - tr.y) < minGap - 1e-6) throw new Error('파괴된 포탑 지형 안으로 들어갔습니다');
+  // 체력 0 챔피언: 0에서 멈추고, 포탑은 더 이상 공격하지 않는다
+  s = withTurrets([{ id: 'a', team: 'red', x: tb.x - 400 }]);
+  s = { ...s, players: { ...s.players, a: { ...s.players.a, hp: 50 } } };
+  s = run(s, 30 * 4);
+  if (s.players.a.hp !== 0 || s.turrets['turret-blue'].targetId) throw new Error('체력 0 챔피언 처리 (0에서 멈춤, 대상 해제)가 다릅니다');
+
+  console.log(`✓ 포탑 (위치 t=${TURRET.positions.blue}/${TURRET.positions.red}, 지형 반경 ${TURRET.obstacleRadius}: 우회·점멸·순간이동 차단, 사거리 ${TURRET.range}, 피해 ${hits.map((h) => h.amount.toFixed(1)).join('/')}, 3초 초기화·대상 바뀌어도 유지, 대상 유지·가까운 순, 타겟 불가, 어그로 전환(막혀도)·사거리 밖 제외, 포탑 평타 물리/마법·치명타 없음, 스킬 무시, 파괴·지형 유지, 성장 185→293·방어 60→40)`);
+} catch (e) {
+  fail(`포탑: ${e.message}`);
 }
 
 if (failed) {

@@ -1,4 +1,4 @@
-// 이동 로직. 벽과 다른 캐릭터는 이동 충돌 반경(pathingRadius)으로 부딪힌다.
+// 이동 로직. 벽·지형(포탑)·다른 캐릭터는 이동 충돌 반경(pathingRadius)으로 부딪힌다.
 // player는 update에서 복사한 객체라 직접 바꿔도 된다.
 
 /**
@@ -84,12 +84,14 @@ export function movePlayer(player, players, dt, map) {
     ny = player.y + dirY * step;
   }
 
-  // 다른 캐릭터와의 충돌: 겹친 만큼 밖으로 밀어낸다
+  // 다른 캐릭터·지형 원(포탑)과의 충돌: 겹친 만큼 밖으로 밀어낸다
+  const bodies = [];
   for (const id in players) {
-    const other = players[id];
-    if (!blocks(player, other)) continue;
-
-    const minDist = player.pathingRadius + other.pathingRadius;
+    if (blocks(player, players[id])) bodies.push({ x: players[id].x, y: players[id].y, radius: players[id].pathingRadius });
+  }
+  if (map?.obstacles) bodies.push(...map.obstacles);
+  for (const other of bodies) {
+    const minDist = player.pathingRadius + other.radius;
     let ox = nx - other.x;
     let oy = ny - other.y;
     let od = Math.hypot(ox, oy);

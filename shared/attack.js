@@ -268,7 +268,7 @@ export function updateAttack(player, players, map, dt, ctx) {
         player.attackWindupKeepRange = false;
         player.commandLockTicks = 1;
         // 피해량(공격력 100%)과 치명타 여부는 발사 순간 정한다. 방어력은 맞는 순간의 값으로 계산한다.
-        const hit = { raw: player.attackDamage, crit: rollCrit(player, ctx.rng), critDamage: player.critDamage };
+        const hit = target.unitType === 'turret' ? structureHit(player) : { raw: player.attackDamage, crit: rollCrit(player, ctx.rng), critDamage: player.critDamage };
         if (atk.type === 'melee') {
           dealAttackDamage(player, target, hit, ctx); // 근접: 즉시 적중
           triggerMarks(player, target, { by: 'attack' }, ctx);
@@ -292,6 +292,16 @@ export function updateAttack(player, players, map, dt, ctx) {
   return shot;
 }
 
+/**
+ * 포탑(구조물)을 때리는 평타: 총 공격력 + 주문력 × 0.6, 치명타 없음.
+ * 추가 공격력 ≥ 주문력 × 0.6 이면 물리 피해, 작으면 마법 피해 (둘 다 0이면 물리).
+ */
+export function structureHit(player) {
+  const ap = player.abilityPower * 0.6;
+  const bonusAd = player.attackDamage - player.baseAttackDamage;
+  return { raw: player.attackDamage + ap, crit: false, critDamage: 1, damageType: bonusAd >= ap ? 'physical' : 'magic' };
+}
+
 /** 평타 상태 (우선순위: windup > chase > cooldown > idle) */
 function getAttackState(player, players, atk) {
   if (player.attackWindup !== null) return 'windup';
@@ -303,11 +313,13 @@ function getAttackState(player, players, atk) {
 
 /**
  * 유도 투사체 이동과 적중 처리. 발사 시점의 대상을 매 틱 따라가다가 닿으면 적중한다.
+ * (players: 챔피언·포탑을 함께 담은 목록)
  * @returns {boolean} 투사체를 계속 유지할지 (false면 제거)
  */
 export function updateProjectile(proj, players, dt, ctx) {
   const target = players[proj.targetId];
-  if (!target || target.hp <= 0) return false;
+  // 대상이 죽거나 타겟 불가가 되면 투사체는 사라진다
+  if (!target || target.hp <= 0 || target.targetable === false) return false;
 
   const dx = target.x - proj.x;
   const dy = target.y - proj.y;

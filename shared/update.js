@@ -8,6 +8,7 @@ import { tickPassive } from './passive.js';
 import { submitCommand, runQueuedCommands } from './commands.js';
 import { tickSummonerCooldowns } from './summoners.js';
 import { updateAttack, updateAttackMove, updateProjectile, computeAttackSpeed } from './attack.js';
+import { tickTurret, updateTurret, updateTurretShot, checkTurretDestroyed } from './turret.js';
 
 /**
  * @param {object} state  현재 게임 상태
@@ -33,6 +34,10 @@ export function update(state, inputs, dt) {
     for (const slot in p.summoners) summoners[slot] = { ...p.summoners[slot] };
     players[id] = { ...p, skills, summoners, casting: p.casting && { ...p.casting }, marks: p.marks.map((m) => ({ ...m })), passive: { ...p.passive } };
   }
+  const turrets = {};
+  for (const id in state.turrets ?? {}) turrets[id] = { ...state.turrets[id] };
+  // 평타·포탑의 대상 후보: 챔피언 + 포탑 (스킬은 players만 보므로 포탑을 맞히지 않는다)
+  const units = { ...players, ...turrets };
   let projectiles = state.projectiles.map((p) => ({ ...p }));
   let nextId = state.nextId;
   // 허수아비 행동(개발자 모드)이 만든 입력도 일반 입력과 똑같이 처리한다
@@ -49,14 +54,15 @@ export function update(state, inputs, dt) {
     tickPassive(players[id], dt);
     if (players[id].revealed > 0) players[id].revealed = Math.max(0, players[id].revealed - dt);
   }
+  for (const id in turrets) tickTurret(turrets[id], state.time + dt, dt);
 
   // 1. 선입력 → 새 입력 처리 (commands.js: 행동 불가 중 선입력 / 쿨타임 선입력)
   for (const id in players) {
-    runQueuedCommands(players, players[id], state.map);
+    runQueuedCommands(players, players[id], state.map, units);
   }
   for (const input of allInputs) {
     const player = players[input.playerId];
-    if (player) submitCommand(players, player, input, state.map, ctx);
+    if (player) submitCommand(players, player, input, state.map, ctx, units);
   }
 
   for (const id in players) {
@@ -73,13 +79,13 @@ export function update(state, inputs, dt) {
   for (const id in players) {
     const wasCasting = !!players[id].casting;
     for (const shot of updateCasting(players[id], dt, players, state.map)) projectiles.push({ id: nextId++, ...shot });
-    if (wasCasting && !players[id].casting) runQueuedCommands(players, players[id], state.map);
+    if (wasCasting && !players[id].casting) runQueuedCommands(players, players[id], state.map, units);
   }
 
   // 2-1. 평타 진행 (어택땅 대상 찾기, 추적 이동 목표 설정, 발사)
   for (const id in players) {
-    updateAttackMove(players[id], players, state.map);
-    const shot = updateAttack(players[id], players, state.map, dt, ctx);
+    updateAttackMove(players[id], units, state.map);
+    const shot = updateAttack(players[id], units, state.map, dt, ctx);
     if (shot) projectiles.push({ id: nextId++, ...shot });
   }
 
@@ -92,14 +98,23 @@ export function update(state, inputs, dt) {
   projectiles = projectiles.filter((proj) => {
     if (proj.kind === 'skillshot') return updateSkillshot(proj, players, dt, ctx);
     if (proj.kind === 'homingSkill') return updateHomingSkill(proj, players, dt, ctx);
-    return updateProjectile(proj, players, dt, ctx);
+    if (proj.kind === 'turret') return updateTurretShot(proj, units, dt, ctx);
+    return updateProjectile(proj, units, dt, ctx);
   });
+
+  // 5. 포탑: 파괴 확인 → 대상 선택(이번 틱 피해로 어그로 전환) → 발사 (투사체는 다음 틱부터 움직인다)
+  for (const id in turrets) checkTurretDestroyed(turrets[id], ctx);
+  for (const id in turrets) {
+    const shot = updateTurret(turrets[id], units, ctx.events);
+    if (shot) projectiles.push({ id: nextId++, ...shot });
+  }
 
   return {
     ...state,
     time: state.time + dt,
     tick: state.tick + 1,
     players,
+    turrets,
     projectiles,
     nextId,
     rngSeed: ctx.rng.seed,

@@ -17,4 +17,5 @@ export * from './passive.js';
 export * from './commands.js';
 export * from './summoners.js';
 export * from './dummyAI.js';
+export * from './turret.js';
 export * from './update.js';

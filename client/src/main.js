@@ -1,6 +1,6 @@
 // 클라이언트 진입점: 렌더링, 입력 수집, 서버 통신을 담당한다.
 import { io } from 'socket.io-client';
-import { TICK_DT, createGameState, createPlayer, addPlayer, update, getSkillData, laneDirection } from '@lol1v1/shared';
+import { TICK_DT, createGameState, createPlayer, addPlayer, update, getSkillData, laneToWorld } from '@lol1v1/shared';
 import { startLoop } from './game/loop.js';
 import { createRenderer } from './render/renderer.js';
 import { setupInput } from './input.js';
@@ -30,9 +30,9 @@ function createInitialState() {
   let s = createGameState();
   const spawn = s.map.spawns.blue;
   s = addPlayer(s, createPlayer({ id: MY_ID, name: 'Player', team: 'blue', x: spawn.x, y: spawn.y }));
-  // 연습용 허수아비: 내 시작 지점에서 라인 방향으로 1100 (개발자 모드에서 행동을 바꿀 수 있다)
-  const dir = laneDirection(s.map);
-  s = addPlayer(s, createPlayer({ id: 'dummy', name: 'Dummy', team: 'red', x: spawn.x + dir.x * 1100, y: spawn.y + dir.y * 1100, isDummy: true }));
+  // 연습용 허수아비: 맵 정중앙 (라인 가운데). 개발자 모드에서 행동을 바꿀 수 있다
+  const center = laneToWorld(s.map, s.map.lane.length / 2, 0);
+  s = addPlayer(s, createPlayer({ id: 'dummy', name: 'Dummy', team: 'red', x: center.x, y: center.y, isDummy: true }));
   return s;
 }
 
@@ -64,8 +64,10 @@ function pickEnemy(wx, wy) {
   const me = state.players[MY_ID];
   let best = null;
   let bestDist = Infinity;
-  for (const id in state.players) {
-    const p = state.players[id];
+  // 챔피언과 포탑 모두 우클릭으로 평타 대상이 된다
+  const units = [...Object.values(state.players), ...Object.values(state.turrets ?? {})];
+  for (const p of units) {
+    const id = p.id;
     if (p.team === me.team || p.hp <= 0 || p.targetable === false) continue;
     const d = Math.hypot(p.x - wx, p.y - wy);
     if (d <= p.selectionRadius && d < bestDist) {
@@ -121,7 +123,7 @@ startLoop({
     pendingInputs = [];
     // 이번 틱 이벤트 → 화면 효과
     for (const ev of state.events) {
-      const target = state.players[ev.targetId];
+      const target = state.players[ev.targetId] ?? state.turrets?.[ev.targetId];
       if (ev.type === 'damage' && target) {
         renderer.damageNumbers.add(ev, { x: target.x, y: target.y - target.gameplayRadius - 40 });
       }

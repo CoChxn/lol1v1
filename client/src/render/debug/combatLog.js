@@ -8,16 +8,17 @@ export function createCombatLog() {
     /** 이번 틱 이벤트를 기록한다. state는 이벤트가 일어난 직후 상태 */
     add(event, state) {
       if (event.type !== 'damage') return;
-      const target = state.players[event.targetId];
-      const source = event.sourceId ? state.players[event.sourceId] : null;
+      const unit = (id) => state.players[id] ?? state.turrets?.[id];
+      const target = unit(event.targetId);
+      const source = event.sourceId ? unit(event.sourceId) : null;
       entries.unshift({
         time: state.time,
         source: source?.name ?? '?',
         target: target?.name ?? '?',
         raw: event.raw,
         damageType: event.damageType,
-        label: event.mark ? `${event.skill} 표식` : event.skill ?? '평타',
-        resist: event.damageType === 'magic' ? `MR ${target?.magicResist ?? 0}` : event.damageType === 'physical' ? `armor ${target?.armor ?? 0}` : '고정',
+        label: event.turret ? '포탑' : event.mark ? `${event.skill} 표식` : event.skill ?? '평타',
+        resist: event.damageType === 'magic' ? `MR ${target?.magicResist ?? 0}` : event.damageType === 'physical' ? `armor ${target?.armor ?? 0}${event.turret ? ' 관통 30%' : ''}` : '고정',
         blocked: !!target?.invulnerable,
         armor: target?.armor ?? 0,
         amount: event.amount,

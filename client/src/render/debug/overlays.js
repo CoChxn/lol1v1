@@ -50,7 +50,7 @@ export function drawDebugOverlays(ctx, prevState, state, alpha, upright = (wx, w
       ctx.stroke();
     }
     // 평타 대상 선
-    const target = p.attackTargetId && state.players[p.attackTargetId];
+    const target = p.attackTargetId && (state.players[p.attackTargetId] ?? state.turrets?.[p.attackTargetId]);
     if (target) {
       ctx.strokeStyle = 'rgba(255, 90, 90, 0.5)';
       ctx.setLineDash([8, 6]);

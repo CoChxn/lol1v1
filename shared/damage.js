@@ -89,9 +89,10 @@ const ON_HIT_EFFECTS = [];
  */
 export function dealAttackDamage(attacker, target, hit, ctx) {
   const raw = hit.crit ? hit.raw * hit.critDamage : hit.raw;
-  const amount = applyDamage(target, physicalDamage(raw, target.armor));
+  const damageType = hit.damageType ?? 'physical'; // 포탑을 때리면 마법 피해일 수 있다 (attack.js structureHit)
+  const amount = applyDamage(target, mitigate(raw, damageType, target));
   // raw: 방어력 적용 전 피해, amount: 실제로 들어간 피해 (무적이면 0)
-  ctx.events.push({ type: 'damage', damageType: 'physical', targetId: target.id, sourceId: attacker?.id ?? null, raw, amount, crit: hit.crit });
+  ctx.events.push({ type: 'damage', damageType, targetId: target.id, sourceId: attacker?.id ?? null, raw, amount, crit: hit.crit });
   for (const effect of ON_HIT_EFFECTS) effect(attacker, target, ctx);
 }
 
