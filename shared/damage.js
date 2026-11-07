@@ -22,12 +22,15 @@ export function physicalDamage(raw, armor) {
 
 /**
  * 피해 종류별 감소 적용
- * - physical: 방어력, magic: 마법 저항력 (같은 공식), true(고정): 감소 없음
+ * - physical: 방어력, magic: 마법 저항력 (같은 공식), true(고정): 방어력 감소 없음
+ * - 대상의 damageReduction(받는 피해 감소 비율, 예: 포탑 강화 방어)은 모든 종류에 적용
  */
 export function mitigate(raw, damageType, target) {
-  if (damageType === 'physical') return raw * armorMultiplier(target.armor);
-  if (damageType === 'magic') return raw * armorMultiplier(target.magicResist);
-  return raw;
+  // 받는 피해 감소 (예: 포탑 강화 방어 80%)
+  const reduce = 1 - (target.damageReduction ?? 0);
+  if (damageType === 'physical') return raw * armorMultiplier(target.armor) * reduce;
+  if (damageType === 'magic') return raw * armorMultiplier(target.magicResist) * reduce;
+  return raw * reduce;
 }
 
 /**

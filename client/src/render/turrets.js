@@ -109,7 +109,7 @@ export function drawTurretDebug(ctx, state, championRadius, upright = NO_ROTATIO
     ctx.setLineDash([]);
     if (t.destroyed) continue;
 
-    const target = t.targetId && (state.players[t.targetId] ?? state.turrets[t.targetId]);
+    const target = t.targetId && (state.players[t.targetId] ?? state.minions?.[t.targetId] ?? state.turrets[t.targetId]);
     if (target) {
       ctx.strokeStyle = 'rgba(255, 80, 80, 0.8)';
       ctx.lineWidth = 2;
@@ -123,7 +123,7 @@ export function drawTurretDebug(ctx, state, championRadius, upright = NO_ROTATIO
       ctx.textAlign = 'center';
       ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
       const ramp = Math.round(TURRET.ramp.perHit * t.rampStacks * 100);
-      ctx.fillText(`AD ${t.attackDamage}  방어 ${t.armor}  증가 +${ramp}%${t.rampStacks ? ` (${t.rampTimer.toFixed(1)}s)` : ''}`, x, y + t.gameplayRadius + 22);
+      ctx.fillText(`AD ${t.attackDamage}  방어 ${t.armor}  증가 +${ramp}%${t.rampStacks ? ` (${t.rampTimer.toFixed(1)}s)` : ''}${t.damageReduction ? `  강화 방어 -${Math.round(t.damageReduction * 100)}%` : ''}`, x, y + t.gameplayRadius + 22);
       const state = { idle: '대기', acquire: '포착', windup: '선딜레이', cooldown: '쿨다운' }[t.attackState] ?? t.attackState;
       const left = t.attackState === 'acquire' ? t.acquireTimer : t.attackState === 'windup' ? t.windupTimer : t.attackTimer;
       ctx.fillText(`${state} ${left > 0 ? left.toFixed(2) + 's' : ''}  대상 ${target?.name ?? '-'}`, x, y + t.gameplayRadius + 38);

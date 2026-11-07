@@ -8,7 +8,7 @@ import { tickPassive } from './passive.js';
 import { submitCommand, runQueuedCommands } from './commands.js';
 import { tickSummonerCooldowns } from './summoners.js';
 import { updateAttack, updateAttackMove, updateProjectile, computeAttackSpeed } from './attack.js';
-import { tickTurret, updateTurret, updateTurretShot, checkTurretDestroyed } from './turret.js';
+import { tickTurret, updateTurret, updateTurretShot, checkTurretDestroyed, updateReinforced } from './turret.js';
 import { updateWaves, createMinion, queueWave, waveStateAt, updateMinion, updateMinionShot, updateRecentHits } from './minions.js';
 
 // 게임 전체에 적용되는 개발자 입력: { type: 'debug', action, value? }
@@ -66,12 +66,10 @@ export function update(state, inputs, dt) {
   const turrets = {};
   for (const id in state.turrets ?? {}) turrets[id] = { ...state.turrets[id] };
   // 대상 후보 (같은 객체를 가리킨다)
-  // - units: 평타·미니언의 대상 (챔피언 + 포탑 + 미니언)
+  // - units: 평타·미니언·포탑의 대상 (챔피언 + 포탑 + 미니언)
   // - skillUnits: 스킬의 대상 (챔피언 + 미니언). 포탑은 스킬에 맞지 않는다
-  // - turretUnits: 포탑의 대상 (챔피언). 포탑과 미니언의 관계는 M3에서
   const units = { ...players, ...turrets, ...minions };
   const skillUnits = { ...players, ...minions };
-  const turretUnits = { ...players, ...turrets };
   const recentHits = state.recentHits ?? [];
   let projectiles = state.projectiles.map((p) => ({ ...p }));
   let nextId = state.nextId;
@@ -98,6 +96,8 @@ export function update(state, inputs, dt) {
     units[m.id] = m;
     skillUnits[m.id] = m;
   }
+  // 포탑 강화 방어: 이번 틱 피해 계산 전에 갱신
+  for (const id in turrets) updateReinforced(turrets[id], units);
 
   // 1. 선입력 → 새 입력 처리 (commands.js: 행동 불가 중 선입력 / 쿨타임 선입력)
   for (const id in players) {
@@ -168,7 +168,7 @@ export function update(state, inputs, dt) {
   // 5. 포탑: 파괴 확인 → 대상 선택(이번 틱 피해로 어그로 전환) → 포착 → 선딜레이 → 발사 (투사체는 다음 틱부터 움직인다)
   for (const id in turrets) checkTurretDestroyed(turrets[id], ctx);
   for (const id in turrets) {
-    const shot = updateTurret(turrets[id], turretUnits, ctx.events, dt);
+    const shot = updateTurret(turrets[id], units, ctx.events, dt);
     if (shot) projectiles.push({ id: nextId++, ...shot });
   }
 

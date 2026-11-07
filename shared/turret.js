@@ -18,12 +18,16 @@
 // - 방어력 관통 30%: 맞는 챔피언의 방어력을 30% 무시한다.
 // - 시간에 따른 능력치: 공격력 185 + 1분마다 9 (12분에 293으로 최대), 방어력·마법 저항력 60 → 12분부터 40
 // - 파괴되면 잔해가 남고, 지형(이동 충돌 원)도 그대로 남는다 (map.obstacles).
-// - 아직 없는 것: 미니언 관련 규칙(미니언 우선 공격, 강화 방어), 시야(값만 저장)
+// - 미니언: 새 대상은 미니언이 챔피언보다 먼저. 미니언에게는 최대 체력 비율 피해 (근접 45%, 원거리 70%, 대포 14%),
+//   피해 증가 없음.
+// - 강화 방어: 사거리 안에 적 미니언이 없으면 받는 모든 피해 80% 감소 (turret.damageReduction → damage.js mitigate)
+// - 아직 없는 것: 시야(값만 저장)
 //
 // turret은 update에서 복사한 객체라 직접 바꿔도 된다.
 import { laneToWorld } from './map.js';
 import { applyDamage } from './combat.js';
 import { armorMultiplier } from './damage.js';
+import { MINIONS } from './minions.js';
 
 // 포탑 데이터 (숫자 조정은 여기서)
 export const TURRET = {
@@ -47,6 +51,8 @@ export const TURRET = {
   ramp: { perHit: 0.4, maxStacks: 3, resetTime: 3 },
   // 어그로 전환: 이 거리 안의 아군 챔피언이 공격당하면
   aggroAllyRange: 1400,
+  // 강화 방어: 사거리 안(중심 ~ 미니언 가장자리 range)에 적 미니언이 하나도 없으면 받는 피해 감소
+  reinforcedReduction: 0.8,
   // 위치 (통로 기준 좌표): u = 파랑 끝에서 라인 방향 거리, v = 라인 가운데에서 가로 방향 거리
   //   v < 0: 화면 왼쪽 위, v > 0: 오른쪽 아래. 미니언 통행로(v = 0)를 막지 않도록 비켜 둔다
   //   (|v| > 지형 반경 100 + 미니언 이동 충돌 반경 35.7)
@@ -96,6 +102,7 @@ export function createTurrets(map) {
       rampStacks: 0, // 챔피언 상대 피해 증가 중첩 (0 ~ maxStacks)
       rampTimer: 0, // 중첩 초기화까지 남은 시간
       destroyed: false,
+      damageReduction: 0, // 받는 피해 감소 비율 (강화 방어 중이면 reinforcedReduction)
       targetable: true,
       invulnerable: false,
       marks: [],
@@ -284,8 +291,26 @@ export function updateTurret(turret, units, events, dt) {
   return shot;
 }
 
-/** 포탑 공격이 대상에게 들어가는 피해 (감소 전, 피해 증가 포함). 챔피언이면 중첩을 쌓는다 */
+/** 강화 방어 갱신: 사거리 안에 적 미니언이 없으면 받는 피해 감소 (매 틱, 피해 계산 전에) */
+export function updateReinforced(turret, units) {
+  let enemyMinionNear = false;
+  for (const id in units) {
+    const u = units[id];
+    if (u.unitType === 'minion' && u.team !== turret.team && u.hp > 0 && turretDistance(turret, u) <= turret.range) {
+      enemyMinionNear = true;
+      break;
+    }
+  }
+  turret.damageReduction = turret.destroyed || enemyMinionNear ? 0 : TURRET.reinforcedReduction;
+}
+
+/**
+ * 포탑 공격이 대상에게 들어가는 피해 (감소 전)
+ * - 미니언: 최대 체력 비율 (종류별 turretDamage)
+ * - 챔피언: 피해 증가 포함, 중첩을 쌓는다
+ */
 function turretHitRaw(turret, target, raw) {
+  if (target.unitType === 'minion') return target.maxHp * MINIONS[target.minionType].turretDamage;
   if ((target.unitType ?? 'champion') !== 'champion' || !turret) return raw;
   const mult = 1 + TURRET.ramp.perHit * turret.rampStacks;
   turret.rampStacks = Math.min(turret.rampStacks + 1, TURRET.ramp.maxStacks);

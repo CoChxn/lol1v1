@@ -1184,7 +1184,8 @@ try {
     return null;
   };
   let ev = firstTurretHit({ critChance: 1 });
-  if (!ev || ev.crit || !near(ev.raw, champ.attack.damage) || ev.damageType !== 'physical' || !near(ev.amount, champ.attack.damage * armorMultiplier(60))) {
+  // (근처에 적 미니언이 없어 강화 방어로 80% 감소)
+  if (!ev || ev.crit || !near(ev.raw, champ.attack.damage) || ev.damageType !== 'physical' || !near(ev.amount, champ.attack.damage * armorMultiplier(60) * (1 - TURRET.reinforcedReduction))) {
     throw new Error(`포탑 평타 피해가 다릅니다 (${ev?.raw}, ${ev?.damageType}, 치명타 ${ev?.crit})`);
   }
   ev = firstTurretHit({ abilityPower: 100 });
@@ -1453,7 +1454,7 @@ try {
     const tu = worldToLane(TEST_MAP, tr.x, tr.y);
     for (const [type, mult] of [['cannon', 0.84], ['melee', 0.6]]) {
       let w = world({ minions: [{ id: 'b1', team: 'blue', type, u: tu.u - 250, v: tu.v }], turrets: true });
-      w = { ...w, turrets: { ...w.turrets, 'turret-red': { ...w.turrets['turret-red'], range: 0 } } }; // 포탑은 쏘지 않게
+      w = { ...w, turrets: { ...w.turrets, 'turret-red': { ...w.turrets['turret-red'], attackTimer: 1e9 } } }; // 포탑은 쏘지 않게 (적 미니언이 사거리 안이라 강화 방어 없음)
       const { out } = dmgEvents(w, 90, (ev) => ev.sourceId === 'b1' && ev.targetId === 'turret-red');
       const ad = minionStat(MINIONS[type].attackDamage, 1);
       if (!out.length || !near(out[0].raw, ad * mult) || !near(out[0].amount, ad * mult * armorMultiplier(60))) throw new Error(`${type} → 포탑 피해 ${out[0]?.raw} (예상 ${ad * mult})`);
@@ -1683,6 +1684,138 @@ try {
   console.log(`✓ 첫 웨이브 (생성 후 ${R.ghostTime}초 유체화, 만나기 전 챔피언 무시·${R.championIgnoreRange} 안은 노림, ${metAt.toFixed(1)}초에 만나 적 근접 셋에게 공격 나누기, 배정 대상 사망 시 일반 규칙, 양쪽 대칭)`);
 } catch (e) {
   fail(`첫 웨이브: ${e.message}`);
+}
+
+// 미니언 M3: 포탑과 미니언 (미니언 우선, 최대 체력 % 피해, 강화 방어, 대포 공격속도, 포탑 치는 미니언의 도움 요청 무시)
+try {
+  const id = Object.keys(CHAMPIONS)[0];
+  const champ = CHAMPIONS[id];
+  const near = (a, b, eps = 1e-6) => Math.abs(a - b) <= eps;
+  const T = createGameState({ turrets: true }).turrets['turret-red'];
+  const tl = worldToLane(TEST_MAP, T.x, T.y);
+  const at = (du, dv = 0) => laneToWorldTest(tl.u + du, tl.v + dv);
+  const mk = (mid, team, type, du, dv = 0, patch = {}) => ({ ...createMinion({ id: mid, team, type, upgrade: 1, wave: 2, map: TEST_MAP }), ...at(du, dv), target: null, laneEnd: null, ...patch });
+  const world = (minions = {}, champs = []) => {
+    let q = { ...createGameState({ turrets: true }), minions };
+    for (const c of champs) {
+      q = addPlayer(q, createPlayer({ id: c.id, name: c.id, team: c.team, ...at(c.du, c.dv ?? 0), championId: id, isDummy: true }));
+      if (c.patch) q = { ...q, players: { ...q.players, [c.id]: { ...q.players[c.id], ...c.patch } } };
+    }
+    return q;
+  };
+  const hold = { moveSpeed: 0, attackSpeed: 0.001 };
+
+  // 새 대상: 더 가까운 챔피언보다 미니언이 먼저
+  let q = world({ b1: mk('b1', 'blue', 'melee', -600, 0, hold) }, [{ id: 'c', team: 'blue', du: -300, patch: { invulnerable: true } }]);
+  q = run3(q, 2);
+  if (q.turrets['turret-red'].targetId !== 'b1') throw new Error(`포탑이 미니언보다 챔피언을 먼저 노렸습니다 (${q.turrets['turret-red'].targetId})`);
+
+  // 미니언에게 주는 피해: 최대 체력 비율, 피해 증가 없음
+  for (const [type, pct] of [['melee', 0.45], ['caster', 0.7], ['cannon', 0.14]]) {
+    let w = world({ b1: mk('b1', 'blue', type, -500, 0, { ...hold, hp: 99999 }) });
+    const hits = [];
+    for (let i = 0; i < 30 * 4 && hits.length < 2; i++) {
+      w = step(w);
+      for (const ev of w.events) if (ev.type === 'damage' && ev.sourceId === 'turret-red') hits.push(ev);
+    }
+    const expect = w.minions.b1.maxHp * pct;
+    if (hits.length < 2 || !near(hits[0].amount, expect) || !near(hits[1].amount, expect)) throw new Error(`포탑 → ${type} 피해 ${hits.map((h) => h.amount.toFixed(1))} (예상 ${expect.toFixed(1)} 두 번 같게)`);
+  }
+  // 근접 미니언은 포탑 세 방에 죽는다
+  {
+    let w = world({ b1: mk('b1', 'blue', 'melee', -500, 0, hold) });
+    let shots = 0;
+    for (let i = 0; i < 30 * 6 && w.minions.b1; i++) {
+      w = step(w);
+      shots += w.events.filter((ev) => ev.type === 'damage' && ev.sourceId === 'turret-red').length;
+    }
+    if (w.minions.b1 || shots !== 3) throw new Error(`근접 미니언이 포탑 ${shots}방에 ${w.minions.b1 ? '살아 있습니다' : '죽었습니다'} (예상 3방)`);
+  }
+
+  // 강화 방어: 사거리 안에 적 미니언이 없으면 받는 피해 80% 감소, 있으면 그대로
+  {
+    const attackT = (minions) => {
+      let w = world(minions, [{ id: 'a', team: 'blue', du: -500, patch: { invulnerable: true } }]);
+      w = step(w, [{ playerId: 'a', type: 'attack', targetId: 'turret-red' }]);
+      for (let i = 0; i < 90; i++) {
+        w = step(w);
+        const ev = w.events.find((e) => e.type === 'damage' && e.targetId === 'turret-red' && e.sourceId === 'a');
+        if (ev) return { ev, w };
+      }
+      return {};
+    };
+    const full = champ.attack.damage * armorMultiplier(60);
+    const alone = attackT({});
+    if (!alone.ev || !near(alone.ev.amount, full * 0.2) || alone.w.turrets['turret-red'].damageReduction !== TURRET.reinforcedReduction) throw new Error(`강화 방어 중 포탑 피해 ${alone.ev?.amount} (예상 ${full * 0.2})`);
+    const withMinion = attackT({ b1: mk('b1', 'blue', 'melee', -700, 300, { ...hold, invulnerable: true }) });
+    if (!withMinion.ev || !near(withMinion.ev.amount, full)) throw new Error(`적 미니언이 사거리 안인데 포탑 피해가 줄었습니다 (${withMinion.ev?.amount})`);
+  }
+
+  // 대포 미니언: 포탑을 맞히면 공격속도 +30%, 포탑이 아닌 대상을 맞히면 사라짐
+  {
+    let w = world({ c1: mk('c1', 'blue', 'cannon', -380, 0, { hp: 99999, maxHp: 99999 }) });
+    w = { ...w, turrets: { ...w.turrets, 'turret-red': { ...w.turrets['turret-red'], attackTimer: 1e9 } } };
+    const ticks = [];
+    for (let i = 0; i < 30 * 5 && ticks.length < 3; i++) {
+      w = step(w);
+      if (w.events.some((ev) => ev.type === 'damage' && ev.sourceId === 'c1' && ev.targetId === 'turret-red')) ticks.push(w.tick);
+    }
+    if (ticks.length < 3 || !w.minions.c1.turretHaste) throw new Error('대포 미니언이 포탑을 맞혔는데 공격속도 증가가 없습니다');
+    const gap = (ticks[2] - ticks[1]) * TICK_DT;
+    const expect = 1 / (MINIONS.cannon.attackSpeed * (1 + MINION_COMBAT.cannonTurretAttackSpeed));
+    if (Math.abs(gap - expect) > TICK_DT + 1e-6) throw new Error(`포탑 공격 중 대포 공격 간격 ${gap.toFixed(2)}초 (예상 ${expect.toFixed(2)})`);
+    // 포탑이 아닌 대상(적 미니언)을 맞히면 사라진다
+    const r1 = mk('r1', 'red', 'melee', -380, 120, { ...hold, hp: 99999, maxHp: 99999 });
+    w = { ...w, minions: { ...w.minions, c1: { ...w.minions.c1, attackTargetId: 'r1' }, r1 } };
+    let lost = false;
+    for (let i = 0; i < 30 * 3 && !lost; i++) {
+      w = step(w);
+      if (w.events.some((ev) => ev.type === 'damage' && ev.sourceId === 'c1' && ev.targetId === 'r1')) lost = !w.minions.c1.turretHaste;
+    }
+    if (!lost) throw new Error('대포 미니언이 포탑이 아닌 대상을 맞혔는데 공격속도 증가가 남았습니다');
+  }
+
+  // 포탑이 아군 미니언을 치면 그 포탑이 4순위: 챔피언(6)을 노리던 미니언이 포탑으로 바꾼다
+  {
+    let w = world(
+      // b1: 포탑까지 462 (탐색 500 안), b2가 포탑에 더 가까워 포탑은 b2를 친다
+      { b1: mk('b1', 'blue', 'caster', -550, 0, { moveSpeed: 0 }), b2: mk('b2', 'blue', 'melee', -500, 200, { ...hold, hp: 99999, maxHp: 99999 }) },
+      [{ id: 'enemy', team: 'red', du: -750, dv: 250, patch: { invulnerable: true } }],
+    );
+    w = run3(w, 2);
+    if (w.minions.b1.attackTargetId !== 'enemy') throw new Error(`4순위 검사 준비: b1이 챔피언을 노리지 않았습니다 (${w.minions.b1.attackTargetId})`);
+    let switched = false;
+    for (let i = 0; i < 30 * 5 && !switched; i++) {
+      w = step(w);
+      switched = w.minions.b1?.attackTargetId === 'turret-red';
+    }
+    if (!switched) throw new Error('포탑이 아군 미니언을 공격하는데 미니언이 포탑으로 대상을 바꾸지 않았습니다');
+  }
+
+  // 포탑을 공격 중인 미니언은 도움 요청(1순위)을 무시한다. 첫 웨이브는 예외
+  for (const firstWave of [false, true]) {
+    const m = mk('b1', 'blue', 'melee', -200, 0, { moveSpeed: 0, hp: 99999, maxHp: 99999 });
+    let w = world(
+      { b1: { ...m, firstWave, metEnemyWave: true, ghosted: false, ghostTimer: 0 } },
+      // enemy: b1에서 656 (탐색 500 밖, 도움 요청 1000 안) → 처음에는 포탑(7순위)만 보인다
+      [{ id: 'enemy', team: 'red', du: -800, dv: 400, patch: { invulnerable: true } }, { id: 'ally', team: 'blue', du: -800, dv: -100, patch: { invulnerable: true } }],
+    );
+    w = { ...w, turrets: { ...w.turrets, 'turret-red': { ...w.turrets['turret-red'], attackTimer: 1e9 } } };
+    w = run3(w, 3);
+    if (w.minions.b1.attackTargetId !== 'turret-red') throw new Error(`도움 요청 검사 준비: 포탑을 노리지 않았습니다 (${w.minions.b1.attackTargetId})`);
+    w = step(w, [{ playerId: 'enemy', type: 'attack', targetId: 'ally' }]);
+    let toEnemy = false;
+    for (let i = 0; i < 30 * 4; i++) {
+      w = step(w);
+      if (w.minions.b1.attackTargetId === 'enemy') toEnemy = true;
+    }
+    if (!firstWave && toEnemy) throw new Error('포탑을 공격 중인 미니언이 도움 요청에 응했습니다');
+    if (firstWave && !toEnemy) throw new Error('첫 웨이브 미니언이 포탑을 공격 중이라고 도움 요청에 응하지 않았습니다');
+  }
+
+  console.log(`✓ 포탑과 미니언 (미니언 우선, 미니언 피해 45/70/14% 피해 증가 없음·근접 3방, 강화 방어 ${TURRET.reinforcedReduction * 100}%, 대포 포탑 공격속도 +30%·다른 대상 맞히면 해제, 포탑이 아군 미니언 공격 → 4순위 전환, 포탑 치는 미니언 도움 요청 무시·첫 웨이브 예외)`);
+} catch (e) {
+  fail(`포탑과 미니언: ${e.message}`);
 }
 
 if (failed) {

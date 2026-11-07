@@ -18,6 +18,8 @@
 //   3) 아군 미니언을 공격하는 적 미니언   4) 아군 미니언을 공격하는 적 포탑
 //   5) 가장 가까운 적 미니언   6) 가장 가까운 적 챔피언   7) 가장 가까운 적 포탑
 //   2~7은 searchRange 안. 같은 순위면 가까운 것.
+// - 포탑을 공격 중인 미니언은 1순위(도움 요청)를 무시한다 (첫 웨이브는 예외). 2·3순위로는 바꾼다.
+// - 대포 미니언: 포탑을 맞히면 공격속도 +30%, 포탑이 아닌 대상을 맞히면 사라짐
 // - 대상 유지: 한 번 정하면 더 높은 순위가 생길 때만 바꾼다.
 //   다시 고르는 때: 평타를 쏠 때마다, 대상을 잃었을 때, 쫓는 중(사거리 밖)에는 매 틱
 //   대상을 잃는 때: 죽음·타겟 불가·leashRange보다 멀어짐
@@ -26,7 +28,7 @@
 // - 첫 웨이브: 생성 후 18초 유체화, 적 웨이브를 만나기 전에는 아주 가까운(200) 챔피언만 노림,
 //   만나면 적 근접 미니언 셋에게 공격을 나눔 (updateFirstWave)
 //
-// 아직 없는 것: 포탑과의 관계(M3), 골드/경험치(M4),
+// 아직 없는 것: 골드/경험치(M4),
 // 이동속도 상승·어그로(나중에 구현할 것: docs/ROADMAP.md)
 //
 // minion은 update에서 복사한 객체라 직접 바꿔도 된다.
@@ -105,6 +107,7 @@ export const MINION_COMBAT = {
   damageVsChampion: 0.6, // 미니언 → 챔피언 피해 배율
   damageVsStructure: 0.6, // 미니언 → 포탑 피해 배율
   cannonVsTurret: 0.84, // 대포 미니언 → 포탑 (위 0.6 대신)
+  cannonTurretAttackSpeed: 0.3, // 대포 미니언: 포탑을 맞히면 공격속도 +30%, 포탑이 아닌 대상을 맞히면 사라짐
   searchRange: 500, // 대상 탐색 (미니언 중심 ~ 대상 가장자리)
   helpRange: 1000, // 아군 챔피언을 공격하는 적 챔피언(우선순위 1)은 여기까지 찾는다
   leashRange: 1000, // 대상이 이보다 멀어지면 놓는다
@@ -247,6 +250,7 @@ export function createMinion({ id, team, type, upgrade, wave, waveIndex = 0, map
     projectileSpeed: data.projectileSpeed,
     minionBonusDamage: data.minionBonusDamage,
     attackTargetId: null, // 공격 대상
+    turretHaste: false, // [대포] 포탑을 맞혀 공격속도 증가 중
     attackState: 'idle', // 'idle' | 'chase' | 'windup' | 'cooldown'
     attackTimer: 0, // 공격 타이머 남은 시간
     attackTimerTotal: 0,
@@ -328,15 +332,15 @@ export function minionPriority(m, u, units, recent) {
   return Infinity;
 }
 
-/** 가장 높은 우선순위 대상 (같은 순위면 가까운 것) */
-function bestTarget(m, units, recent) {
+/** 가장 높은 우선순위 대상 (같은 순위면 가까운 것). minRank보다 높은(작은) 순위는 건너뛴다 */
+function bestTarget(m, units, recent, minRank = 1) {
   let best = null;
   let bestRank = Infinity;
   let bestDist = Infinity;
   for (const id in units) {
     const u = units[id];
     const rank = minionPriority(m, u, units, recent);
-    if (rank === Infinity) continue;
+    if (rank === Infinity || rank < minRank) continue;
     const d = reach(m, u);
     if (rank < bestRank || (rank === bestRank && d < bestDist)) {
       best = u;
@@ -349,9 +353,11 @@ function bestTarget(m, units, recent) {
 
 /** 지금 대상보다 높은 순위가 있으면 바꾼다 (같은 순위로는 바꾸지 않음) */
 function reevaluate(m, units, recent) {
-  const best = bestTarget(m, units, recent);
-  if (!best) return;
   const cur = m.attackTargetId && units[m.attackTargetId];
+  // 포탑을 공격 중인 미니언은 '아군 챔피언을 공격하는 적 챔피언'(1순위, 도움 요청)을 무시한다 (첫 웨이브는 예외)
+  const ignoreHelp = cur?.unitType === 'turret' && !m.firstWave;
+  const best = bestTarget(m, units, recent, ignoreHelp ? 2 : 1);
+  if (!best) return;
   const curRank = cur ? minionPriority(m, cur, units, recent) : Infinity;
   if (!cur || best.rank < curRank) m.attackTargetId = best.unit.id;
 }
@@ -398,6 +404,16 @@ export function minionHitRaw(attacker, target) {
   if (kind === 'minion') return ad + target.hp * attacker.minionBonusDamage;
   if (kind === 'turret') return ad * (attacker.minionType === 'cannon' ? MINION_COMBAT.cannonVsTurret : MINION_COMBAT.damageVsStructure);
   return ad * MINION_COMBAT.damageVsChampion;
+}
+
+/** 미니언 총 공격속도 (대포가 포탑을 맞혀 증가 중이면 +30%) */
+export function minionAttackSpeed(m) {
+  return m.attackSpeed * (m.turretHaste ? 1 + MINION_COMBAT.cannonTurretAttackSpeed : 1);
+}
+
+/** [대포] 맞힌 대상에 따라 공격속도 증가를 켜고 끈다 (owner: 살아 있는 미니언) */
+function updateTurretHaste(owner, target) {
+  if (owner?.minionType === 'cannon') owner.turretHaste = target.unitType === 'turret';
 }
 
 /** 미니언 공격 적중 (물리 피해) */
@@ -456,7 +472,7 @@ export function updateMinion(m, units, recent, map, dt, ctx) {
       if (m.attackTimer <= EPSILON) {
         m.windupTargetId = target.id;
         m.windupTimer = m.windupTime;
-        m.attackTimer = m.attackTimerTotal = 1 / m.attackSpeed;
+        m.attackTimer = m.attackTimerTotal = 1 / minionAttackSpeed(m);
       }
     }
   } else if (!target && m.windupTargetId === null) {
@@ -490,6 +506,7 @@ export function updateMinion(m, units, recent, map, dt, ctx) {
         };
       } else {
         dealMinionDamage(m, m.id, wt, ctx);
+        updateTurretHaste(m, wt);
       }
       m.windupTimer = null;
       m.windupTargetId = null;
@@ -523,6 +540,7 @@ export function updateMinionShot(proj, units, dt, ctx) {
   }
   if (Math.hypot(target.x - proj.x, target.y - proj.y) >= proj.radius + target.gameplayRadius) return true;
   dealMinionDamage(proj, proj.ownerId, target, ctx);
+  updateTurretHaste(units[proj.ownerId], target);
   return false;
 }
 
