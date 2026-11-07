@@ -1428,7 +1428,7 @@ try {
 
   // 근접 vs 근접: 선딜레이 0.2초(6틱) 뒤 피해 = 공격력 + 대상 현재 체력 2%, 이후 1/1.25초마다
   {
-    let q = world({ minions: [{ id: 'b1', team: 'blue', type: 'melee', u: 3000 }, { id: 'r1', team: 'red', type: 'melee', u: 3000 + MINIONS.melee.gameplayRadius * 2 + 100 }] });
+    let q = world({ minions: [{ id: 'b1', team: 'blue', type: 'melee', u: 3000 }, { id: 'r1', team: 'red', type: 'melee', u: 3000 + MINIONS.melee.gameplayRadius * 2 + MINIONS.melee.range - 10 }] });
     q = { ...q, minions: { ...q.minions, r1: { ...q.minions.r1, attackSpeed: 0.01 } } }; // r1은 거의 안 때림
     const { out } = dmgEvents(q, 60, (ev) => ev.sourceId === 'b1');
     if (!out.length) throw new Error('근접 미니언이 적 미니언을 때리지 않았습니다');

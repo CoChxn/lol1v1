@@ -51,7 +51,7 @@ export const MINIONS = {
     attackSpeed: 1.25,
     windup: 0.2, // 선딜레이 (초)
     projectileSpeed: null, // 없으면 근접: 즉시 적중
-    range: 110,
+    range: 70,
     armor: 0,
     magicResist: 0,
     gameplayRadius: 39, // 판정 반경
