@@ -9,7 +9,7 @@ import { update } from '../update.js';
 import { TICK_DT } from '../constants.js';
 import { armorMultiplier, physicalDamage, mitigate, damageRaw } from '../damage.js';
 import { TURRET, turretAttackDamage, turretResist, updateTurret } from '../turret.js';
-import { MINIONS, MINION_WAVES, MINION_COMBAT, createWaveState, updateWaves, upgradeCount, minionStat, waveInterval, createMinion } from '../minions.js';
+import { MINIONS, MINION_WAVES, MINION_COMBAT, createWaveState, updateWaves, upgradeCount, minionStat, waveInterval, createMinion, minionPriority } from '../minions.js';
 
 // 대부분의 검사는 같은 맵 코드를 '가로 통로'(각도 0)에서 돌린다: 좌표를 x 방향 거리로 쓰기 쉽게.
 // 실제 게임의 대각선 통로는 아래 '대각선 맵' 검사에서 따로 확인한다.
@@ -1351,6 +1351,8 @@ try {
     let minGap = Infinity;
     for (let i = 0; i < 30 * 40; i++) {
       q = step(q);
+      // 첫 웨이브 유체화는 따로 검사한다 (여기서는 몸 충돌만)
+      q = { ...q, minions: Object.fromEntries(Object.entries(q.minions).map(([k, m]) => [k, { ...m, ghosted: false, ghostTimer: 0 }])) };
       for (const m of Object.values(q.minions)) minGap = Math.min(minGap, Math.hypot(m.x - q.players.a.x, m.y - q.players.a.y) - m.pathingRadius - q.players.a.pathingRadius);
       if (q.time > 31) q = { ...q, waves: { ...q.waves, enabled: false, queue: [] } };
     }
@@ -1402,7 +1404,7 @@ try {
     let q = createGameState({ turrets });
     const ms = {};
     for (const m of minions) {
-      const mm = createMinion({ id: m.id, team: m.team, type: m.type, upgrade: m.upgrade ?? 1, wave: 1, map: TEST_MAP });
+      const mm = createMinion({ id: m.id, team: m.team, type: m.type, upgrade: m.upgrade ?? 1, wave: 2, map: TEST_MAP });
       const pos = laneToWorldTest(m.u, m.v ?? 0);
       ms[m.id] = { ...mm, x: pos.x, y: pos.y, target: null, ...(m.patch ?? {}) };
     }
@@ -1479,7 +1481,7 @@ try {
     q = world({ minions: [{ id: 'b1', team: 'blue', type: 'caster', u: 3000 }, { id: 'r1', team: 'red', type: 'melee', u: 3450, patch: { attackSpeed: 0.01 } }] });
     q = run3(q, 3);
     if (q.minions.b1.attackTargetId !== 'r1') throw new Error('같은 순위 검사 준비가 안 되었습니다');
-    const r2 = createMinion({ id: 'r2', team: 'red', type: 'melee', upgrade: 1, wave: 1, map: TEST_MAP });
+    const r2 = createMinion({ id: 'r2', team: 'red', type: 'melee', upgrade: 1, wave: 2, map: TEST_MAP });
     const p2 = laneToWorldTest(3150);
     q = { ...q, minions: { ...q.minions, r2: { ...r2, x: p2.x, y: p2.y, target: null, attackSpeed: 0.01, hp: 5000, maxHp: 5000 } } };
     q = { ...q, minions: { ...q.minions, r1: { ...q.minions.r1, hp: 5000, maxHp: 5000 } } };
@@ -1498,7 +1500,7 @@ try {
       k = step(k, [{ playerId: 'me', type: 'move', x: flee.x, y: flee.y }]);
       k = run3(k, 15);
       if (k.minions.r1.attackTargetId !== 'me' || k.minions.r1.attackState !== 'chase') throw new Error('도망치는 챔피언을 쫓지 않습니다');
-      const b = createMinion({ id: 'b1', team: 'blue', type: 'melee', upgrade: 1, wave: 1, map: TEST_MAP });
+      const b = createMinion({ id: 'b1', team: 'blue', type: 'melee', upgrade: 1, wave: 2, map: TEST_MAP });
       const bp = { x: k.minions.r1.x + 400, y: k.minions.r1.y };
       k = { ...k, minions: { ...k.minions, b1: { ...b, ...bp, target: null, laneEnd: null, attackSpeed: 0.01 } } };
       k = step(k);
@@ -1552,7 +1554,7 @@ try {
 try {
   const id = Object.keys(CHAMPIONS)[0];
   const mk = (mid, team, type, u, v, patch = {}) => {
-    const m = createMinion({ id: mid, team, type, upgrade: 1, wave: 1, map: TEST_MAP });
+    const m = createMinion({ id: mid, team, type, upgrade: 1, wave: 2, map: TEST_MAP });
     return { ...m, ...laneToWorldTest(u, v), target: null, laneEnd: null, ...patch };
   };
   // 1) 나란히 선 아군 2마리 뒤의 근접 미니언이 돌아서 앞의 적을 때린다
@@ -1610,6 +1612,77 @@ try {
   console.log('✓ 막힘 처리 (아군 뒤 근접 미니언 우회 후 공격, 챔피언이 미니언 줄 우회·떨림 없음, 웨이브 전투에서 갇힌 미니언 없음)');
 } catch (e) {
   fail(`막힘 처리: ${e.message}`);
+}
+
+// 첫 웨이브 특수 동작: 18초 유체화, 만나기 전 챔피언 무시(200 안 제외), 만나면 적 근접 셋에게 공격 나누기
+try {
+  const id = Object.keys(CHAMPIONS)[0];
+  const R = MINION_WAVES.firstWaveRules;
+  // 유체화: 생성 후 18초, 두 번째 웨이브는 아님
+  let s = createGameState({ minions: true });
+  s = run3(s, Math.round(30.6 / TICK_DT));
+  const first = Object.values(s.minions).find((m) => m.team === 'blue' && m.waveIndex === 0);
+  if (!first?.firstWave || !first.ghosted) throw new Error('첫 웨이브 미니언이 유체화 상태가 아닙니다');
+  while (s.time < 30 + R.ghostTime - 0.1) s = step(s);
+  if (!s.minions[first.id].ghosted) throw new Error('18초 전에 유체화가 풀렸습니다');
+  while (s.time < 30 + R.ghostTime + 0.1) s = step(s);
+  if (s.minions[first.id].ghosted) throw new Error('18초가 지나도 유체화가 풀리지 않았습니다');
+  while (s.time < 60.6) s = step(s);
+  const second = Object.values(s.minions).find((m) => m.wave === 2);
+  if (!second || second.ghosted || second.firstWave) throw new Error('두 번째 웨이브가 첫 웨이브 규칙을 받았습니다');
+
+  // 만나기 전: 400 떨어진 적 챔피언은 무시, 200 안이면 노린다
+  const mkFirst = (team, type, u, v = 0, i = 0) => ({ ...createMinion({ id: `${team}${i}`, team, type, upgrade: 1, wave: 1, waveIndex: i, map: TEST_MAP }), ...laneToWorldTest(u, v), target: null, laneEnd: null });
+  {
+    let q = createGameState();
+    const m = mkFirst('blue', 'caster', 3000);
+    q = { ...q, minions: { [m.id]: m } };
+    q = addPlayer(q, createPlayer({ id: 'far', name: 'far', team: 'red', ...laneToWorldTest(3000, 400), championId: id, isDummy: true }));
+    q = run3(q, 5);
+    if (q.minions[m.id].attackTargetId) throw new Error('적 웨이브를 만나기 전인데 400 떨어진 챔피언을 노렸습니다');
+    q = addPlayer(q, createPlayer({ id: 'near', name: 'near', team: 'red', ...laneToWorldTest(3000, R.championIgnoreRange + 30), championId: id, isDummy: true }));
+    q = run3(q, 2);
+    if (q.minions[m.id].attackTargetId !== 'near') throw new Error('200 안에 들어온 챔피언을 노리지 않았습니다');
+    // 만난 뒤에는 일반 규칙 (400 떨어진 챔피언도 대상 후보)
+    const met = { ...q.minions[m.id], metEnemyWave: true };
+    if (minionPriority(met, q.players.far, { ...q.players, ...q.minions }, []) === Infinity) throw new Error('적 웨이브를 만난 뒤에도 챔피언을 무시합니다');
+  }
+
+  // 만나면 공격 나누기: 웨이브 안 순서대로 적 근접 1·2·3번에게 번갈아 (양쪽 대칭)
+  s = createGameState({ minions: true });
+  let metAt = null;
+  for (let i = 0; i < 30 * 70 && metAt === null; i++) {
+    s = step(s);
+    const fw = Object.values(s.minions).filter((m) => m.wave === 1);
+    if (fw.length === 12 && fw.every((m) => m.metEnemyWave)) metAt = s.time;
+  }
+  if (metAt === null) throw new Error('첫 웨이브끼리 만나지 않았습니다');
+  for (const team of ['blue', 'red']) {
+    const enemy = team === 'blue' ? 'red' : 'blue';
+    const enemyMelee = Object.values(s.minions).filter((m) => m.team === enemy && m.wave === 1 && m.minionType === 'melee').sort((a, b) => a.waveIndex - b.waveIndex);
+    for (const m of Object.values(s.minions).filter((x) => x.team === team && x.wave === 1)) {
+      const expect = enemyMelee[m.waveIndex % enemyMelee.length].id;
+      if (m.assignedTargetId !== expect || m.attackTargetId !== expect) throw new Error(`${team} ${m.waveIndex}번(${m.minionType})의 배정 대상이 ${m.assignedTargetId} (예상 ${expect})`);
+    }
+  }
+  // 배정된 대상이 죽으면 일반 규칙으로
+  const anyBlue = Object.values(s.minions).find((m) => m.team === 'blue' && m.wave === 1 && m.waveIndex === 0);
+  let k = { ...s, minions: { ...s.minions, [anyBlue.assignedTargetId]: { ...s.minions[anyBlue.assignedTargetId], hp: 0 } } };
+  k = run3(k, 2);
+  const after = k.minions[anyBlue.id];
+  if (after.assignedTargetId) throw new Error('배정된 대상이 죽었는데 배정이 남았습니다');
+  // 첫 웨이브 싸움이 양쪽 대칭: 끝날 때까지 양쪽 남은 수가 같다
+  let q = s;
+  for (let i = 0; i < 30 * 25; i++) {
+    q = step(q);
+    const fw = Object.values(q.minions).filter((m) => m.wave === 1);
+    const b = fw.filter((m) => m.team === 'blue').length;
+    const r = fw.filter((m) => m.team === 'red').length;
+    if (Math.abs(b - r) > 1) throw new Error(`첫 웨이브 싸움이 한쪽으로 기울었습니다 (파랑 ${b}, 빨강 ${r}, ${q.time.toFixed(1)}초)`);
+  }
+  console.log(`✓ 첫 웨이브 (생성 후 ${R.ghostTime}초 유체화, 만나기 전 챔피언 무시·${R.championIgnoreRange} 안은 노림, ${metAt.toFixed(1)}초에 만나 적 근접 셋에게 공격 나누기, 배정 대상 사망 시 일반 규칙, 양쪽 대칭)`);
+} catch (e) {
+  fail(`첫 웨이브: ${e.message}`);
 }
 
 if (failed) {

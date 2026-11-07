@@ -1,4 +1,4 @@
-// 미니언 그리기: 팀 색 원 + 작은 체력바. 근접 = 원, 원거리 = 가운데 점, 대포 = 네모.
+// 미니언 그리기: 팀 색 원 + 작은 체력바. 근접 = 원, 원거리 = 가운데 점, 대포 = 네모. 유체화 중이면 반투명.
 // 이전 틱 위치와 보간해서 부드럽게 그린다.
 import { lerpPlayerPos } from './players.js';
 
@@ -17,6 +17,7 @@ export function drawMinions(ctx, prevState, state, alpha, upright = NO_ROTATION)
     const { x, y } = lerpPlayerPos(prev[m.id], m, alpha);
     const c = COLORS[m.team];
     const r = m.gameplayRadius;
+    ctx.globalAlpha = m.ghosted ? 0.45 : 1; // 유체화 중(첫 웨이브)이면 반투명
     ctx.fillStyle = c.body;
     ctx.strokeStyle = c.edge;
     ctx.lineWidth = 2;
@@ -31,6 +32,8 @@ export function drawMinions(ctx, prevState, state, alpha, upright = NO_ROTATION)
       ctx.arc(x, y, r * 0.25, 0, Math.PI * 2);
       ctx.fill();
     }
+
+    ctx.globalAlpha = 1;
 
     upright(x, y, (ux, uy) => {
       const left = Math.round(ux - BAR_WIDTH / 2);

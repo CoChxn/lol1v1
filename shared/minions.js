@@ -23,7 +23,10 @@
 //   대상을 잃는 때: 죽음·타겟 불가·leashRange보다 멀어짐
 // - 대상이 없으면 라인 끝으로 걷는다.
 //
-// 아직 없는 것: 포탑과의 관계(M3), 첫 웨이브 특수 동작·골드/경험치(M4),
+// - 첫 웨이브: 생성 후 18초 유체화, 적 웨이브를 만나기 전에는 아주 가까운(200) 챔피언만 노림,
+//   만나면 적 근접 미니언 셋에게 공격을 나눔 (updateFirstWave)
+//
+// 아직 없는 것: 포탑과의 관계(M3), 골드/경험치(M4),
 // 이동속도 상승·어그로(나중에 구현할 것: docs/ROADMAP.md)
 //
 // minion은 update에서 복사한 객체라 직접 바꿔도 된다.
@@ -125,6 +128,11 @@ export const MINION_WAVES = {
     { from: 25 * 60, every: 1 },
   ],
   baseCount: { melee: 3, caster: 3 },
+  // 첫 웨이브 특수 동작 (미드 라인)
+  firstWaveRules: {
+    ghostTime: 18, // 생성 후 이 시간(초) 동안 유체화
+    championIgnoreRange: 200, // 적 웨이브를 만나기 전에는 이 거리(미니언 중심 ~ 챔피언 가장자리) 안의 챔피언만 노린다
+  },
 };
 
 /** 웨이브 시각 t 다음 웨이브까지의 간격 */
@@ -190,7 +198,7 @@ export function queueWave(waves, t, cannon, wave = waves.waveCount) {
   const upgrade = upgradeCount(t);
   const queue = [...waves.queue];
   for (const team of ['blue', 'red']) {
-    types.forEach((type, i) => queue.push({ team, type, spawnAt: t + i * MINION_WAVES.spawnInterval, upgrade: Math.max(upgrade, 1), wave }));
+    types.forEach((type, i) => queue.push({ team, type, spawnAt: t + i * MINION_WAVES.spawnInterval, upgrade: Math.max(upgrade, 1), wave, waveIndex: i }));
   }
   waves.queue = queue;
 }
@@ -206,7 +214,7 @@ export function waveStateAt(time, enabled = true) {
 }
 
 /** 미니언 하나 만들기 */
-export function createMinion({ id, team, type, upgrade, wave, map }) {
+export function createMinion({ id, team, type, upgrade, wave, waveIndex = 0, map }) {
   const data = MINIONS[type];
   const L = map.lane.length;
   const start = laneToWorld(map, team === 'blue' ? SPAWN_INSET : L - SPAWN_INSET, 0);
@@ -218,6 +226,7 @@ export function createMinion({ id, team, type, upgrade, wave, map }) {
     minionType: type,
     team,
     wave,
+    waveIndex, // 웨이브 안에서 나온 순서 (0부터)
     upgrade,
     x: start.x,
     y: start.y,
@@ -247,7 +256,11 @@ export function createMinion({ id, team, type, upgrade, wave, map }) {
     casting: null,
     effects: [],
     marks: [],
-    ghosted: false,
+    ghosted: wave === 1, // 첫 웨이브는 생성 후 잠시 유체화
+    ghostTimer: wave === 1 ? MINION_WAVES.firstWaveRules.ghostTime : 0, // 남은 유체화 시간
+    firstWave: wave === 1, // 첫 웨이브 특수 동작 대상
+    metEnemyWave: false, // [첫 웨이브] 적 웨이브를 만났는지 (만나기 전에는 가까운 챔피언만 노림)
+    assignedTargetId: null, // [첫 웨이브] 웨이브끼리 만났을 때 배정된 적 근접 미니언
     avoidSide: 0, // 막혔을 때 돌아가는 쪽 (movement.js)
     avoidTicks: 0,
     targetable: true,
@@ -274,7 +287,7 @@ export function updateWaves(waves, time, map) {
   const ready = waves.queue.filter((q) => q.spawnAt <= time + EPSILON);
   if (!ready.length) return [];
   waves.queue = waves.queue.filter((q) => q.spawnAt > time + EPSILON);
-  return ready.map((q) => ({ team: q.team, type: q.type, upgrade: q.upgrade, wave: q.wave, map }));
+  return ready.map((q) => ({ team: q.team, type: q.type, upgrade: q.upgrade, wave: q.wave, waveIndex: q.waveIndex ?? 0, map }));
 }
 
 // ---------------------------------------------------------------------------
@@ -302,6 +315,8 @@ export function minionPriority(m, u, units, recent) {
     return !!v && v.team === m.team && (v.unitType ?? 'champion') === kind2;
   };
   const d = reach(m, u);
+  // [첫 웨이브] 적 웨이브를 만나기 전에는 아주 가까운 챔피언만 노린다
+  if (kind === 'champion' && m.firstWave && !m.metEnemyWave && d > MINION_WAVES.firstWaveRules.championIgnoreRange) return Infinity;
   if (kind === 'champion' && d <= MINION_COMBAT.helpRange && isAttacking(recent, u.id, allyOf('champion'))) return 1;
   if (d > MINION_COMBAT.searchRange) return Infinity;
   if (kind === 'minion' && isAttacking(recent, u.id, allyOf('champion'))) return 2;
@@ -341,6 +356,41 @@ function reevaluate(m, units, recent) {
   if (!cur || best.rank < curRank) m.attackTargetId = best.unit.id;
 }
 
+/**
+ * [첫 웨이브] 특수 동작
+ * - 생성 후 ghostTime 동안 유체화
+ * - 적 웨이브(적 미니언)가 탐색 범위에 처음 들어오면 '만남': 그 뒤로는 챔피언도 일반 규칙으로 노린다
+ * - 만나는 순간 공격을 나눈다: 웨이브 안 순서(waveIndex)대로 적 첫 웨이브 근접 미니언 1·2·3번에게 번갈아 배정
+ *   (거리와 상관없이). 배정된 대상이 죽거나 타겟 불가가 되면 일반 규칙으로 돌아간다.
+ */
+function updateFirstWave(m, units, dt) {
+  if (m.ghostTimer > 0) {
+    m.ghostTimer = Math.max(0, m.ghostTimer - dt);
+    if (m.ghostTimer <= EPSILON) m.ghosted = false;
+  }
+  if (!m.metEnemyWave) {
+    let met = false;
+    for (const id in units) {
+      const u = units[id];
+      if (u.unitType === 'minion' && canAttack(m, u) && reach(m, u) <= MINION_COMBAT.searchRange) {
+        met = true;
+        break;
+      }
+    }
+    if (met) {
+      m.metEnemyWave = true;
+      const melee = Object.values(units)
+        .filter((u) => u.unitType === 'minion' && u.firstWave && u.minionType === 'melee' && canAttack(m, u))
+        .sort((a, b) => a.waveIndex - b.waveIndex);
+      if (melee.length) m.assignedTargetId = melee[m.waveIndex % melee.length].id;
+    }
+  }
+  if (m.assignedTargetId && !canAttack(m, units[m.assignedTargetId])) {
+    m.assignedTargetId = null;
+    m.attackTargetId = null;
+  }
+}
+
 /** 미니언 공격이 대상에게 주는 피해 (감소 전) */
 export function minionHitRaw(attacker, target) {
   const kind = target.unitType ?? 'champion';
@@ -373,12 +423,20 @@ function cancelMinionWindup(m) {
 export function updateMinion(m, units, recent, map, dt, ctx) {
   m.attackTimer = Math.max(0, m.attackTimer - dt);
 
-  // 대상을 잃음: 죽음·타겟 불가·너무 멀어짐
-  const cur = m.attackTargetId && units[m.attackTargetId];
-  if (m.attackTargetId && (!canAttack(m, cur) || reach(m, cur) > MINION_COMBAT.leashRange)) m.attackTargetId = null;
-  if (!m.attackTargetId) reevaluate(m, units, recent);
-  // 쫓는 중(선딜레이 아님, 사거리 밖)에는 매 틱 다시 고른다 → 도망치는 대상을 쫓다가도 더 높은 순위가 생기면 바로 바꾼다
-  else if (m.windupTargetId === null && edgeDistance(m, units[m.attackTargetId]) > m.range) reevaluate(m, units, recent);
+  // [첫 웨이브] 유체화 시간, 적 웨이브와 만남, 공격 나누기
+  if (m.firstWave) updateFirstWave(m, units, dt);
+
+  if (m.assignedTargetId) {
+    // 배정된 대상이 살아 있는 동안은 거리·우선순위와 상관없이 그 대상만 노린다
+    m.attackTargetId = m.assignedTargetId;
+  } else {
+    // 대상을 잃음: 죽음·타겟 불가·너무 멀어짐
+    const cur = m.attackTargetId && units[m.attackTargetId];
+    if (m.attackTargetId && (!canAttack(m, cur) || reach(m, cur) > MINION_COMBAT.leashRange)) m.attackTargetId = null;
+    if (!m.attackTargetId) reevaluate(m, units, recent);
+    // 쫓는 중(선딜레이 아님, 사거리 밖)에는 매 틱 다시 고른다 → 도망치는 대상을 쫓다가도 더 높은 순위가 생기면 바로 바꾼다
+    else if (m.windupTargetId === null && edgeDistance(m, units[m.attackTargetId]) > m.range) reevaluate(m, units, recent);
+  }
 
   let shot = null;
   // 선딜레이 진행 (대상이 사라지거나 멀어지면 취소)
@@ -435,8 +493,8 @@ export function updateMinion(m, units, recent, map, dt, ctx) {
       }
       m.windupTimer = null;
       m.windupTargetId = null;
-      // 평타를 쏠 때마다 대상을 다시 고른다
-      reevaluate(m, units, recent);
+      // 평타를 쏠 때마다 대상을 다시 고른다 (첫 웨이브 배정 중이면 그대로)
+      if (!m.assignedTargetId) reevaluate(m, units, recent);
     }
   }
 
