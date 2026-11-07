@@ -1,4 +1,5 @@
 import { getSkillData } from '@lol1v1/shared';
+import { TIME_SPEEDS } from './timeControl.js';
 // [개발자 모드] 스탯 조절 패널 (화면 오른쪽 HTML 패널).
 // 값을 직접 바꾸지 않고 { type: 'debug', ... } 입력으로 보내서 shared 로직이 처리한다.
 
@@ -41,6 +42,7 @@ const CSS = `
 .dev-panel button:hover { background: #335; }
 .dev-panel button:disabled { opacity: 0.4; cursor: default; }
 .dev-panel .grid.time { margin-bottom: 4px; }
+.dev-panel .grid.speeds { grid-template-columns: repeat(3, 1fr); margin-bottom: 8px; }
 .dev-panel .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
 .dev-panel .hint { color: #889; margin-top: 6px; line-height: 1.4; }
 `;
@@ -79,8 +81,8 @@ export function createStatPanel({ getState, myId, onInput, timeControl, onReset 
   stepBtn.onclick = () => timeControl.stepOnce();
   timeRow.append(pauseBtn, stepBtn);
   const speedRow = document.createElement('div');
-  speedRow.className = 'tabs';
-  const speedButtons = [1, 0.5, 0.25].map((scale) => {
+  speedRow.className = 'grid speeds';
+  const speedButtons = TIME_SPEEDS.map((scale) => {
     const b = document.createElement('button');
     b.textContent = `×${scale}`;
     b.onclick = () => timeControl.setSpeed(scale);
