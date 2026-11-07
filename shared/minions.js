@@ -49,9 +49,9 @@ export const MINIONS = {
     range: 110,
     armor: 0,
     magicResist: 0,
-    gameplayRadius: 30, // 판정 반경
-    selectionRadius: 30, // 클릭 선택 반경
-    pathingRadius: 20, // 이동 충돌 반경
+    gameplayRadius: 39, // 판정 반경
+    selectionRadius: 39, // 클릭 선택 반경
+    pathingRadius: 27.87185, // 이동 충돌 반경
     gold: { base: 20, perUpgrade: 0 },
     xp: 62,
     minionBonusDamage: 0.02, // 미니언끼리 추가 피해 (대상 현재 체력 비율)
@@ -67,9 +67,9 @@ export const MINIONS = {
     range: 550,
     armor: 0,
     magicResist: 0,
-    gameplayRadius: 30, // 판정 반경
-    selectionRadius: 30, // 클릭 선택 반경
-    pathingRadius: 20, // 이동 충돌 반경
+    gameplayRadius: 39, // 판정 반경
+    selectionRadius: 39, // 클릭 선택 반경
+    pathingRadius: 27.87185, // 이동 충돌 반경
     gold: { base: 14, perUpgrade: 0 },
     xp: 31,
     minionBonusDamage: 0.035,
@@ -85,9 +85,9 @@ export const MINIONS = {
     range: 300,
     armor: 0,
     magicResist: 0,
-    gameplayRadius: 40, // 판정 반경
-    selectionRadius: 40, // 클릭 선택 반경
-    pathingRadius: 30, // 이동 충돌 반경
+    gameplayRadius: 45, // 판정 반경
+    selectionRadius: 45, // 클릭 선택 반경
+    pathingRadius: 32.87185, // 이동 충돌 반경
     gold: { base: 50, perUpgrade: 1 }, // 첫 웨이브 50, 이후 업그레이드마다 +1
     xp: 75,
     minionBonusDamage: 0.05,

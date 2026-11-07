@@ -1281,8 +1281,8 @@ try {
     const got = [MINIONS.melee.hp, MINIONS.melee.attackDamage, MINIONS.caster.hp, MINIONS.caster.attackDamage, MINIONS.cannon.hp, MINIONS.cannon.attackDamage].map((st) => minionStat(st, Number(n)));
     if (got.some((v, i) => !near(v, table[n][i], 1e-9))) throw new Error(`${n}회 업그레이드 능력치 ${got.join('/')} (표 ${table[n].join('/')})`);
   }
-  // 반경: 근접·원거리 판정·선택 30 / 이동 충돌 20, 대포 40 / 30
-  for (const [t, g, pr] of [['melee', 30, 20], ['caster', 30, 20], ['cannon', 40, 30]]) {
+  // 반경: 근접·원거리 판정·선택 39 / 이동 충돌 27.87185, 대포 45 / 32.87185
+  for (const [t, g, pr] of [['melee', 39, 27.87185], ['caster', 39, 27.87185], ['cannon', 45, 32.87185]]) {
     const m = createMinion({ id: 'x', team: 'blue', type: t, upgrade: 1, wave: 1, map: TEST_MAP });
     if (m.gameplayRadius !== g || m.selectionRadius !== g || m.pathingRadius !== pr) throw new Error(`${t} 반경 ${m.gameplayRadius}/${m.selectionRadius}/${m.pathingRadius} (예상 ${g}/${g}/${pr})`);
   }
