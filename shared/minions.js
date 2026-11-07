@@ -18,7 +18,8 @@
 //   3) 아군 미니언을 공격하는 적 미니언   4) 아군 미니언을 공격하는 적 포탑
 //   5) 가장 가까운 적 미니언   6) 가장 가까운 적 챔피언   7) 가장 가까운 적 포탑
 //   2~7은 searchRange 안. 같은 순위면 가까운 것.
-// - 대상 유지: 한 번 정하면 더 높은 순위가 생길 때만 바꾼다. 다시 고르는 때: 평타를 쏠 때마다, 대상을 잃었을 때
+// - 대상 유지: 한 번 정하면 더 높은 순위가 생길 때만 바꾼다.
+//   다시 고르는 때: 평타를 쏠 때마다, 대상을 잃었을 때, 쫓는 중(사거리 밖)에는 매 틱
 //   대상을 잃는 때: 죽음·타겟 불가·leashRange보다 멀어짐
 // - 대상이 없으면 라인 끝으로 걷는다.
 //
@@ -371,6 +372,8 @@ export function updateMinion(m, units, recent, map, dt, ctx) {
   const cur = m.attackTargetId && units[m.attackTargetId];
   if (m.attackTargetId && (!canAttack(m, cur) || reach(m, cur) > MINION_COMBAT.leashRange)) m.attackTargetId = null;
   if (!m.attackTargetId) reevaluate(m, units, recent);
+  // 쫓는 중(선딜레이 아님, 사거리 밖)에는 매 틱 다시 고른다 → 도망치는 대상을 쫓다가도 더 높은 순위가 생기면 바로 바꾼다
+  else if (m.windupTargetId === null && edgeDistance(m, units[m.attackTargetId]) > m.range) reevaluate(m, units, recent);
 
   let shot = null;
   // 선딜레이 진행 (대상이 사라지거나 멀어지면 취소)

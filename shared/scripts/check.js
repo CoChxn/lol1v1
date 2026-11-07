@@ -1483,6 +1483,22 @@ try {
       q = step(q);
       if (q.minions.b1.attackTargetId !== 'r1') throw new Error('같은 순위의 더 가까운 대상으로 바꿨습니다');
     }
+    // 쫓는 중에는 매 틱 다시 고른다: 도망치는 챔피언(6)을 쫓다가 적 미니언(5)이 탐색 범위에 들어오면 바로 바꾼다
+    {
+      let k = world({ minions: [{ id: 'r1', team: 'red', type: 'melee', u: 3000 }], champs: [{ id: 'me', team: 'blue', u: 2700 }] });
+      k = run3(k, 2);
+      if (k.minions.r1.attackTargetId !== 'me') throw new Error('추적 검사 준비: 미니언이 챔피언을 노리지 않았습니다');
+      // 챔피언은 계속 도망 (사거리 밖 유지)
+      const flee = laneToWorldTest(500);
+      k = step(k, [{ playerId: 'me', type: 'move', x: flee.x, y: flee.y }]);
+      k = run3(k, 15);
+      if (k.minions.r1.attackTargetId !== 'me' || k.minions.r1.attackState !== 'chase') throw new Error('도망치는 챔피언을 쫓지 않습니다');
+      const b = createMinion({ id: 'b1', team: 'blue', type: 'melee', upgrade: 1, wave: 1, map: TEST_MAP });
+      const bp = { x: k.minions.r1.x + 400, y: k.minions.r1.y };
+      k = { ...k, minions: { ...k.minions, b1: { ...b, ...bp, target: null, laneEnd: null, attackSpeed: 0.01 } } };
+      k = step(k);
+      if (k.minions.r1.attackTargetId !== 'b1') throw new Error('쫓는 중 더 높은 순위(적 미니언)가 생겼는데 바로 바꾸지 않았습니다');
+    }
     // 대상이 leash(1000)보다 멀어지면 놓고 라인 끝으로 다시 걷는다
     q = { ...q, minions: { b1: q.minions.b1, r1: { ...q.minions.r1, ...laneToWorldTest(3000 + MINION_COMBAT.leashRange + 200, 0) } } };
     q = step(q);
@@ -1522,7 +1538,7 @@ try {
     if (q.projectiles.some((p) => p.kind === 'minion') || q.minions.r1) throw new Error('죽은 미니언을 향한 투사체가 남았습니다');
   }
 
-  console.log(`✓ 미니언 전투 (근접 즉시·원거리/대포 투사체, 선딜레이 ${MINIONS.melee.windup}/${MINIONS.caster.windup}초, 챔피언 60%·포탑 60%·대포→포탑 84%, 미니언끼리 현재 체력 % 추가, 우선순위 미니언>챔피언·아군 챔피언 공격자 1000까지·같은 순위 유지·leash, 챔피언 평타·Q 막힘·W 통과, 죽음·막타·투사체 소멸)`);
+  console.log(`✓ 미니언 전투 (근접 즉시·원거리/대포 투사체, 선딜레이 ${MINIONS.melee.windup}/${MINIONS.caster.windup}초, 챔피언 60%·포탑 60%·대포→포탑 84%, 미니언끼리 현재 체력 % 추가, 우선순위 미니언>챔피언·아군 챔피언 공격자 1000까지·같은 순위 유지·쫓는 중 매 틱 재평가·leash, 챔피언 평타·Q 막힘·W 통과, 죽음·막타·투사체 소멸)`);
 } catch (e) {
   fail(`미니언 전투: ${e.message}`);
 }
