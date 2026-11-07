@@ -586,11 +586,22 @@ if (!failed) {
         // 벽 쪽 → 가장 가까운 벽 밖
         s = until(castAt(patch(far(), 'a', { x: 100 }), -500, start.y));
         if (s.players.a.x !== s.players.a.pathingRadius) throw new Error(`벽 밖으로 나갔습니다 (${s.players.a.x})`);
-        // 시전 중 밀리면 그 위치 기준으로 다시 계산
+        // 시전 중 밀리면 밀린 위치에서 처음 정한 방향·거리만큼 (300 조준 → 100 밀림 → 400)
         s = castAt(far(), start.x + 300, start.y);
         s = patch(s, 'a', { x: start.x + 100 });
         s = until(s);
-        if (Math.abs(s.players.a.x - (start.x + 300)) > 1e-6) throw new Error('시전 중 밀린 위치 기준으로 다시 계산되지 않았습니다');
+        if (Math.abs(s.players.a.x - (start.x + 400)) > 1e-6) throw new Error(`시전 중 밀린 위치에서 처음 방향·거리로 이동하지 않았습니다 (${(s.players.a.x - start.x).toFixed(1)}, 예상 400)`);
+        // 시전 중 점멸: 같은 방향이면 점멸 거리 + 순간이동 거리, 반대 방향이면 점멸한 자리에서 처음 방향으로
+        s = castAt(far(), start.x + 1000, start.y);
+        s = step(s, [{ playerId: 'a', type: 'summoner', slot: 'F', x: start.x + 1000, y: start.y }]);
+        const flashed = s.players.a.x - start.x;
+        s = until(s);
+        if (Math.abs(s.players.a.x - (start.x + flashed + range)) > 1e-6) throw new Error(`시전 중 같은 방향 점멸 뒤 총 이동이 ${(s.players.a.x - start.x).toFixed(1)}입니다 (예상 ${flashed + range})`);
+        s = castAt(far(), start.x + 1000, start.y);
+        s = step(s, [{ playerId: 'a', type: 'summoner', slot: 'F', x: start.x - 1000, y: start.y }]);
+        const back = s.players.a.x;
+        s = until(s);
+        if (Math.abs(s.players.a.x - (back + range)) > 1e-6) throw new Error('시전 중 반대 방향 점멸 뒤 처음 방향으로 이동하지 않았습니다');
 
         if (homing) {
           const { blue } = createGameState().map.spawns;
@@ -634,7 +645,7 @@ if (!failed) {
             if (manaSpec && restored !== manaSpec.base + data.manaCost[0]) throw new Error(`표식을 터뜨렸을 때 마나 회복이 다릅니다 (${restored})`);
           }
         }
-        console.log(`✓ ${id} ${key} ${data.name} (위치 지정: 최대 ${range}·사거리 안·벽·시전 중 밀림${homing ? ` / 유도 투사체: 우선순위 ${homing.priority}, 범위 ${homing.acquireRadius}, 대상 없으면 안 나감, 피해 공식, 표식 터뜨림` : ''})`);
+        console.log(`✓ ${id} ${key} ${data.name} (위치 지정: 최대 ${range}·사거리 안·벽·시전 중 밀림·점멸 조합${homing ? ` / 유도 투사체: 우선순위 ${homing.priority}, 범위 ${homing.acquireRadius}, 대상 없으면 안 나감, 피해 공식, 표식 터뜨림` : ''})`);
       } catch (e) {
         fail(`${id} ${key} 스킬: ${e.message}`);
       }

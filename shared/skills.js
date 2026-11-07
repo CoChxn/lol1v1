@@ -6,7 +6,7 @@
 //
 // 구현된 축:
 // - 조준: direction (마우스 방향, 사거리 밖이면 최대 사거리로)
-//         location (땅 클릭, 사거리 밖이면 그 방향으로 최대 사거리 지점)
+//         location (땅 클릭, 사거리 밖이면 그 방향으로 최대 사거리. 방향·거리를 저장해서 발동 순간 위치 기준으로 적용)
 // - 발동: normal (+ 시전 시간)
 // - 효과: projectile (직선, collision: first | pierce, targets: all | champions, origin: castEnd | castStart)
 //         blink (조준한 위치로 순간이동)
@@ -69,14 +69,18 @@ const TARGETING = {
     if (!(len > 0)) return null;
     return { dirX: dx / len, dirY: dy / len };
   },
-  // 위치: 땅 클릭 지점. 사거리 밖이면 그 방향으로 최대 사거리 지점 (outOfRange: 'maxRange')
-  // 실제 효과 위치는 발동 순간 시전자 위치에서 이 지점 쪽으로 다시 계산한다 (시전 중 밀려도 최대 사거리 유지)
+  // 위치: 땅 클릭 지점. 사거리 밖이면 그 방향으로 최대 사거리 (outOfRange: 'maxRange')
+  // 지점이 아니라 '방향과 거리'를 저장한다. 발동 순간 시전자 위치에서 그 방향으로 그 거리만큼 적용한다.
+  // → 시전 중 밀리거나 점멸해도, 밀린 위치에서 처음 정한 방향·거리 그대로 (예: 점멸 400 + E 475 = 875)
   location(player, targeting, x, y) {
     const dx = x - player.x;
     const dy = y - player.y;
     const len = Math.hypot(dx, dy);
-    if (len <= targeting.range) return { tx: x, ty: y };
-    return { tx: player.x + (dx / len) * targeting.range, ty: player.y + (dy / len) * targeting.range };
+    return {
+      dirX: len > 0 ? dx / len : 1,
+      dirY: len > 0 ? dy / len : 0,
+      dist: Math.min(len, targeting.range),
+    };
   },
 };
 
@@ -175,14 +179,9 @@ export function pickHomingTarget(player, players, effect) {
 
 // --- 3. 효과: 발동 순간 실행. 투사체 효과는 새 투사체를 돌려준다 ---
 const EFFECTS = {
-  // 순간이동: 발동 순간 위치에서 조준 지점 쪽으로 최대 사거리까지. 벽 안이면 가장 가까운 벽 밖, 다른 캐릭터와 겹치면 밀어냄
+  // 순간이동: 발동 순간 위치에서 조준할 때 정한 방향으로 정한 거리만큼. 벽 밖이면 가장 가까운 통로 안, 다른 캐릭터와 겹치면 밀어냄
   blink(player, effect, cast, data, level, players, map) {
-    const dx = cast.tx - player.x;
-    const dy = cast.ty - player.y;
-    const len = Math.hypot(dx, dy);
-    const dist = Math.min(len, data.targeting.range);
-    const dirX = len > 0 ? dx / len : 1;
-    const dirY = len > 0 ? dy / len : 0;
+    const { dirX, dirY, dist } = cast;
     const dest = clampToMap(player.x + dirX * dist, player.y + dirY * dist, player.pathingRadius, map);
     player.x = dest.x;
     player.y = dest.y;
