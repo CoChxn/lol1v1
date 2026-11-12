@@ -1610,7 +1610,60 @@ try {
       if (idle.length) throw new Error(`${t}초: 전투 구역에서 싸우지 않는 미니언 ${idle.length}마리`);
     }
   }
-  console.log('✓ 막힘 처리 (아군 뒤 근접 미니언 우회 후 공격, 챔피언이 미니언 줄 우회·떨림 없음, 웨이브 전투에서 갇힌 미니언 없음)');
+  // 4) 무리 전체를 보고 짧은 쪽으로 돈다
+  {
+    const still = { moveSpeed: 0, attackSpeed: 0.001 };
+    // 챔피언이 미니언 줄을 지나 적을 평타로 쫓는다. 반환: 처음 때린 시각, 방향 바꾼 횟수, 지나간 v 범위
+    const chase = (wallVs, startV = 0) => {
+      let q = createGameState();
+      const minions = {};
+      wallVs.forEach((v, i) => (minions[`w${i}`] = mk(`w${i}`, 'blue', 'melee', 3300, v, still)));
+      minions.e = mk('e', 'red', 'melee', 4100, startV, { ...still, hp: 99999, maxHp: 99999 });
+      q = { ...q, minions };
+      q = addPlayer(q, createPlayer({ id: 'a', name: 'A', team: 'blue', ...laneToWorldTest(3000, startV), championId: id }));
+      q = step(q, [{ playerId: 'a', type: 'attack', targetId: 'e' }]);
+      let flips = 0;
+      let last = 0;
+      let minV = Infinity;
+      let maxV = -Infinity;
+      for (let i = 0; i < 30 * 6; i++) {
+        q = step(q);
+        const sd = q.players.a.avoidSide;
+        if (sd && last && sd !== last) flips++;
+        if (sd) last = sd;
+        const l = worldToLane(TEST_MAP, q.players.a.x, q.players.a.y);
+        minV = Math.min(minV, l.v);
+        maxV = Math.max(maxV, l.v);
+        if (q.events.some((ev) => ev.type === 'damage' && ev.sourceId === 'a')) return { t: q.time, flips, minV, maxV };
+      }
+      return { t: Infinity, flips, minV, maxV };
+    };
+    // 대칭 줄 4마리: 한쪽으로 끝까지 돌고 방향을 바꾸지 않는다 (시각은 평타가 맞은 시각: 선딜레이·투사체 비행 포함)
+    const sym = chase([-120, -40, 40, 120]);
+    if (sym.flips || sym.t > 3.0) throw new Error(`대칭 줄 우회: ${sym.t.toFixed(2)}초, 방향 바꿈 ${sym.flips}번`);
+    // 한쪽(+v)으로 길게 늘어선 줄: 짧은 쪽(-v)으로 돈다
+    const asym = chase([-40, 40, 120, 200, 280]);
+    if (asym.maxV > 60 || asym.flips || asym.t === Infinity) throw new Error(`긴 줄을 짧은 쪽으로 돌지 않았습니다 (v ${asym.minV.toFixed(0)}~${asym.maxV.toFixed(0)}, 방향 바꿈 ${asym.flips}번)`);
+    // 줄 한쪽 끝이 벽에 붙어 있으면 반대쪽으로 돈다 (벽 쪽이 더 짧아 보여도)
+    const edge = TEST_MAP.lane.width / 2;
+    const wall = chase([edge - 30, edge - 110, edge - 190, edge - 270, edge - 350], edge - 160);
+    if (wall.t === Infinity || wall.flips || wall.minV > edge - 160) throw new Error(`벽에 붙은 줄을 반대쪽으로 돌지 않았습니다 (도착 ${wall.t}, 방향 바꿈 ${wall.flips}번)`);
+  }
+  // 5) 점멸·순간이동으로 미니언 위에 가면 밀려나 겹치지 않는다 (무리 한가운데도)
+  {
+    let q = createGameState();
+    const minions = {};
+    for (let i = 0; i < 7; i++) minions[`m${i}`] = mk(`m${i}`, 'blue', 'melee', 3300 + (i % 3) * 50, Math.floor(i / 3) * 50 - 50, { moveSpeed: 0, attackSpeed: 0.001 });
+    q = { ...q, minions };
+    q = addPlayer(q, createPlayer({ id: 'a', name: 'A', team: 'blue', ...laneToWorldTest(3000, 0), championId: id }));
+    const center = laneToWorldTest(3350, 0);
+    const overlap = (st) => Math.min(...Object.values(st.minions).map((m) => Math.hypot(m.x - st.players.a.x, m.y - st.players.a.y) - m.pathingRadius - st.players.a.pathingRadius));
+    const f = step(q, [{ playerId: 'a', type: 'summoner', slot: 'F', x: center.x, y: center.y }]);
+    if (overlap(f) < -1e-6) throw new Error(`점멸로 미니언 무리 안에 겹쳤습니다 (${overlap(f).toFixed(1)})`);
+    const tp = step(q, [{ playerId: 'a', type: 'debug', action: 'teleport', x: center.x, y: center.y }]);
+    if (overlap(tp) < -1e-6) throw new Error(`순간이동으로 미니언 무리 안에 겹쳤습니다 (${overlap(tp).toFixed(1)})`);
+  }
+  console.log('✓ 막힘 처리 (아군 뒤 근접 미니언 우회 후 공격, 챔피언이 미니언 줄 우회·떨림 없음, 웨이브 전투에서 갇힌 미니언 없음, 무리 전체를 보고 짧은 쪽·벽 반대쪽으로 우회, 점멸·순간이동 겹침 밀어내기)');
 } catch (e) {
   fail(`막힘 처리: ${e.message}`);
 }

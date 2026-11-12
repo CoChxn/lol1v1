@@ -63,14 +63,15 @@ function handle(players, player, cmd, map, units) {
 }
 
 /** 새로 들어온 명령 처리 */
-export function submitCommand(players, player, cmd, map, ctx, units = players) {
+// bodies: 몸 충돌 대상 (챔피언 + 미니언). 점멸·순간이동 뒤 겹침을 밀어낼 때 쓴다. 없으면 players
+export function submitCommand(players, player, cmd, map, ctx, units = players, bodies = players) {
   if (cmd.type === 'summoner') {
     // 소환사 주문(점멸 등)은 시전 시간이 없어 행동 불가 중에도 바로 쓴다 (진행 중인 스킬 시전은 끊지 않음)
-    orderSummoner(player, players, cmd.slot, cmd.x, cmd.y, map, ctx);
+    orderSummoner(player, bodies, cmd.slot, cmd.x, cmd.y, map, ctx);
     return;
   }
   if (cmd.type === 'debug') {
-    applyDebugInput(players, player, cmd, map);
+    applyDebugInput(players, player, cmd, map, bodies);
     return;
   }
   if (cmd.type === 'stop') {

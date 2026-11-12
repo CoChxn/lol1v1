@@ -69,7 +69,7 @@ export function update(state, inputs, dt) {
   // - units: 평타·미니언·포탑의 대상 (챔피언 + 포탑 + 미니언)
   // - skillUnits: 스킬의 대상 (챔피언 + 미니언). 포탑은 스킬에 맞지 않는다
   const units = { ...players, ...turrets, ...minions };
-  const skillUnits = { ...players, ...minions };
+  const skillUnits = { ...players, ...minions }; // 스킬 대상이자 몸 충돌 대상 (점멸·순간이동 겹침 밀어내기)
   const recentHits = state.recentHits ?? [];
   let projectiles = state.projectiles.map((p) => ({ ...p }));
   let nextId = state.nextId;
@@ -105,7 +105,7 @@ export function update(state, inputs, dt) {
   }
   for (const input of allInputs) {
     const player = players[input.playerId];
-    if (player) submitCommand(players, player, input, state.map, ctx, units);
+    if (player) submitCommand(players, player, input, state.map, ctx, units, skillUnits);
   }
 
   for (const id in players) {

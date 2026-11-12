@@ -3,7 +3,7 @@
 // player·players는 update에서 복사한 객체라 직접 바꿔도 된다.
 import { addEffect } from './effects.js';
 import { applyDamage, spendMana, restoreFull } from './combat.js';
-import { clampToMap } from './movement.js';
+import { clampToMap, resolveOverlap } from './movement.js';
 import { cancelAttack } from './attack.js';
 import { DUMMY_MODES } from './dummyAI.js';
 import { skillMaxLevel } from './champions/validate.js';
@@ -50,8 +50,9 @@ export function setStat(player, stat, value) {
  * @param {object} player  입력을 보낸 플레이어
  * @param {object} input  { action, targetId?, stat?, value?, effect?, flag?, mode?, x?, y? }  targetId가 없으면 보낸 사람이 대상
  * @param {object} map
+ * @param {object} [bodies]  몸 충돌 대상 (순간이동 뒤 겹침 밀어내기). 없으면 players
  */
-export function applyDebugInput(players, player, input, map) {
+export function applyDebugInput(players, player, input, map, bodies = players) {
   const { action } = input;
   const target = input.targetId ? players[input.targetId] : player;
   if (!target) return;
@@ -83,8 +84,9 @@ export function applyDebugInput(players, player, input, map) {
       const pos = clampToMap(input.x, input.y, target.pathingRadius, map);
       target.x = pos.x;
       target.y = pos.y;
+      resolveOverlap(target, bodies, map); // 다른 유닛과 겹치면 밀어낸다
       target.target = null;
-      if (target.isDummy) target.patrolAnchor = { ...pos };
+      if (target.isDummy) target.patrolAnchor = { x: target.x, y: target.y };
     }
   }
   else if (action === 'restore') restoreFull(target);
